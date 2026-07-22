@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="uz">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="ZaminTahlil orqali dala chegaralari, sun'iy yo'ldosh tahlili va AI tavsiyalarini boshqaring.">
+  <title>ZaminTahlil Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="page-shell">
+    <header class="masthead panel">
+      <div class="brand-block">
+        <p class="eyebrow">RAQAMLI DALA MONITORINGI</p>
+        <h1>ZaminTahlil</h1>
+        <p class="lead">
+          Dalalarni bitta boshqaruv oynasida kuzating: kontur chizing, Sentinel-2 tasvirlarini taqqoslang,
+          indekslarni tekshiring va amaliy tavsiyalar oling.
+        </p>
+      </div>
+      <div class="masthead-side">
+        <div class="status-card">
+          <span class="status-label">Tizim holati</span>
+          <div id="apiStatus" class="status-pill" data-state="loading">Server tekshirilmoqda...</div>
+        </div>
+        <div class="mini-stats">
+          <article class="mini-stat">
+            <span>Jami dalalar</span>
+            <strong id="fieldCount">0</strong>
+          </article>
+          <article class="mini-stat">
+            <span>Tanlangan maydon</span>
+            <strong id="selectedAreaStat">-</strong>
+          </article>
+          <article class="mini-stat">
+            <span>Oxirgi kuzatuv</span>
+            <strong id="latestCaptureStat">-</strong>
+          </article>
+        </div>
+      </div>
+    </header>
+
+    <main class="dashboard">
+      <section class="hero-layout">
+        <article class="story-card panel">
+          <div class="section-heading">
+            <span class="step">01</span>
+            <div>
+              <p class="eyebrow">BOSHLANG'ICH QADAM</p>
+              <h2>Nazorat markazi</h2>
+            </div>
+          </div>
+          <p class="story-copy">
+            Ish oqimi oddiy: avval dala konturini chizing, keyin ekin ma'lumotlarini kiriting. Saqlangan dala
+            bo'yicha tasvir, tavsiya va yillik dinamika avtomatik ochiladi.
+          </p>
+          <div class="highlight-grid">
+            <div class="highlight-card">
+              <span class="highlight-kicker">Xarita holati</span>
+              <strong id="selectionState">Dala tanlanmagan</strong>
+              <p>Saqlangan dalani bosing yoki yangi polygon chizing.</p>
+            </div>
+            <div class="highlight-card">
+              <span class="highlight-kicker">Kontur bo'yicha</span>
+              <strong id="draftGuide">Polygon chizishni boshlang</strong>
+              <p>Maydon avtomatik hisoblanadi va serverda qayta tekshiriladi.</p>
+            </div>
+          </div>
+        </article>
+
+        <section class="workspace-card panel">
+          <div class="workspace-top">
+            <div>
+              <p class="eyebrow">XARITA WORKSPACE</p>
+              <h2>Dala konturi va tanlov</h2>
+            </div>
+            <div class="map-badge">Uzbekistan view</div>
+          </div>
+          <div class="map-shell">
+            <div id="map" aria-label="Dala xaritasi"></div>
+            <div class="map-hint">Yangi dala uchun polygon chizing yoki saqlangan ko'k maydonni tanlang.</div>
+          </div>
+        </section>
+
+        <aside class="composer-card panel">
+          <div class="section-heading">
+            <span class="step">02</span>
+            <div>
+              <p class="eyebrow">YANGI DALA</p>
+              <h2>Ma'lumotlarni kiriting</h2>
+            </div>
+          </div>
+
+          <form id="fieldForm" class="field-form">
+            <label>
+              Hisoblangan maydon
+              <output id="draftArea">Avval xaritada polygon chizing</output>
+            </label>
+            <label>
+              O'simlik yoki ekin nomi
+              <input id="cropName" maxlength="120" required placeholder="Masalan: Paxta">
+            </label>
+            <label>
+              Ekin ekilgan sana
+              <input id="plantedOn" type="date" required>
+            </label>
+            <label>
+              Rivojlanish bosqichi
+              <input id="growthStage" maxlength="120" required placeholder="Masalan: Gullash bosqichi">
+            </label>
+            <button class="primary" type="submit">Dalani saqlash</button>
+          </form>
+
+          <div id="formMessage" class="message" role="status"></div>
+        </aside>
+      </section>
+
+      <section id="emptyState" class="panel empty-panel">
+        <p class="eyebrow">TANLOV KUTILMOQDA</p>
+        <h2>Tahlil paneli hali ochilmagan</h2>
+        <p>
+          Saqlangan dala tanlangach, shu sahifada tasvirlarni solishtirish, AI tavsiyalar va yillik indekslar
+          ko'rinadi.
+        </p>
+      </section>
+
+      <section id="detail" class="detail hidden" aria-live="polite">
+        <div class="detail-banner panel">
+          <div class="detail-copy">
+            <p class="eyebrow">TANLANGAN DALA</p>
+            <h2 id="fieldTitle">-</h2>
+            <p id="fieldMeta" class="muted">-</p>
+          </div>
+
+          <div class="analysis-controls">
+            <label>
+              Tahlil rejimi
+              <select id="analysisMode">
+                <option value="latest">Oxirgi ma'lumot</option>
+                <option value="latest_cloud_free">Oxirgi bulutsiz ma'lumot</option>
+              </select>
+            </label>
+            <button id="analyzeButton" class="primary" type="button">Tahlil qilish</button>
+          </div>
+
+          <div id="analysisMessage" class="message wide" role="status"></div>
+        </div>
+
+        <div class="detail-grid">
+          <section class="panel viewer-panel">
+            <div class="section-heading row-between">
+              <div>
+                <p class="eyebrow">SUN'IY YO'LDOSH TASVIRLARI</p>
+                <h2>Qatlam va vaqt taqqoslovi</h2>
+              </div>
+              <label class="switch-label">
+                <input id="compareToggle" type="checkbox">
+                Solishtirish rejimi
+              </label>
+            </div>
+
+            <div class="selector-grid">
+              <fieldset>
+                <legend>A tasvir</legend>
+                <div class="nav-control">
+                  <button id="prevLayerA" type="button" title="Oldingi qatlam">←</button>
+                  <select id="layerA"></select>
+                  <button id="nextLayerA" type="button" title="Keyingi qatlam">→</button>
+                </div>
+                <div class="nav-control">
+                  <button id="prevDateA" type="button" title="Oldingi sana">←</button>
+                  <select id="dateA"></select>
+                  <button id="nextDateA" type="button" title="Keyingi sana">→</button>
+                </div>
+              </fieldset>
+
+              <fieldset id="bControls" class="hidden">
+                <legend>B tasvir</legend>
+                <div class="nav-control">
+                  <button id="prevLayerB" type="button" title="Oldingi qatlam">←</button>
+                  <select id="layerB"></select>
+                  <button id="nextLayerB" type="button" title="Keyingi qatlam">→</button>
+                </div>
+                <div class="nav-control">
+                  <button id="prevDateB" type="button" title="Oldingi sana">←</button>
+                  <select id="dateB"></select>
+                  <button id="nextDateB" type="button" title="Keyingi sana">→</button>
+                </div>
+              </fieldset>
+            </div>
+
+            <div id="viewerWrap" class="viewer-wrap loading">
+              <div id="imageMap" aria-label="Sentinel tasvir ko'ruvchisi"></div>
+              <span class="viewer-label label-a">A</span>
+              <span id="labelB" class="viewer-label label-b hidden">B</span>
+              <div id="viewerState" class="viewer-state">Acquisition mavjud emas</div>
+              <input id="swipe" class="swipe hidden" type="range" min="5" max="95" value="50" aria-label="A va B tasvir divideri">
+            </div>
+
+            <div id="mobileCompare" class="mobile-compare hidden">
+              <button data-side="A" type="button">A ni ko'rsatish</button>
+              <button data-side="B" type="button">B ni ko'rsatish</button>
+            </div>
+
+            <div class="viewer-options">
+              <label>Shaffoflik <input id="opacity" type="range" min="10" max="100" value="100"></label>
+              <label><input id="qaToggle" type="checkbox"> QA yoki maska</label>
+            </div>
+
+            <div id="imageMeta" class="image-meta"></div>
+            <div id="legend" class="legend hidden">
+              <span>-1</span>
+              <div></div>
+              <span>0</span>
+              <div></div>
+              <span>+1</span>
+            </div>
+          </section>
+
+          <div class="side-stack">
+            <section class="panel recommendation-panel">
+              <p class="eyebrow">AI TAVSIYASI</p>
+              <h2>Dalaga amaliy xulosa</h2>
+              <div id="recommendation" class="recommendation">
+                <p class="muted">Tahlildan keyin tavsiya shu yerda chiqadi.</p>
+              </div>
+            </section>
+
+            <section class="panel chat-panel">
+              <p class="eyebrow">SAVOL-JAVOB</p>
+              <h2>Dalaga oid savol yuboring</h2>
+              <div class="chat" id="chatLog"></div>
+              <form id="chatForm" class="chat-form">
+                <label for="chatInput">Savolingiz</label>
+                <textarea id="chatInput" maxlength="2000" rows="4" required placeholder="Masalan: NDVI pasayishi nimani anglatadi?"></textarea>
+                <button class="secondary" type="submit">Savol yuborish</button>
+              </form>
+              <p class="privacy-note">Chatning oxirgi xabarlari shu brauzer sessiyasida saqlanadi.</p>
+            </section>
+          </div>
+        </div>
+
+        <section class="panel chart-panel">
+          <div class="section-heading row-between">
+            <div>
+              <p class="eyebrow">YILLIK DINAMIKA</p>
+              <h2>Asosiy indekslar harakati</h2>
+            </div>
+            <div class="chart-filters">
+              <label>Yil <select id="chartYear"></select></label>
+              <label>
+                Boshlanish sanasi
+                <input id="chartFromDate" type="date">
+              </label>
+              <button id="loadHistoryButton" class="secondary" type="button">Hozirgacha yuklash</button>
+              <span class="chart-note">Har nuqta bir kuzatuv bo'yicha indeks qiymatini ko'rsatadi.</span>
+            </div>
+          </div>
+
+          <div id="chartMessage" class="message wide" role="status"></div>
+          <div id="metricChecks" class="metric-checks"></div>
+          <div class="chart-wrap">
+            <canvas id="annualChart"></canvas>
+            <div id="chartEmpty" class="viewer-state">Kuzatuv mavjud emas</div>
+          </div>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>
