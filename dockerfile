@@ -13,6 +13,11 @@ RUN apt-get update && apt-get install -y \
 
 COPY pyproject.toml ./
 COPY poetry.lock* ./
+COPY pyproject.toml ./
+COPY README.md ./
+COPY poetry.lock* ./
+
+COPY . .
 
 RUN pip install --upgrade pip
 
