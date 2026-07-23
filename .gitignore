@@ -8,6 +8,7 @@ __pycache__/
 .ruff_cache/
 dist/
 tests/
+data/*.sqlite3
 *.egg-info/
 .agents/
 .claude/
