@@ -7,39 +7,56 @@
   <title>ZaminTahlil Dashboard</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css">
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
+  <div id="globalLoader"></div>
+
   <div class="page-shell">
+    <div class="topbar">
+      <div class="topbar-brand">
+        <span class="topbar-mark">ZT</span>
+        <span class="topbar-name">ZaminTahlil</span>
+      </div>
+      <div class="lang-switch">
+        <label for="langSwitch" data-i18n="nav.langLabel">Til</label>
+        <select id="langSwitch" aria-label="Til / Русский / Language">
+          <option value="uz-latn">O'zbekcha (lotin)</option>
+          <option value="uz-cyrl">Ўзбекча (кирилл)</option>
+          <option value="ru">Русский</option>
+          <option value="en">English</option>
+        </select>
+      </div>
+    </div>
+
     <header class="masthead panel">
       <div class="brand-block">
-        <p class="eyebrow">RAQAMLI DALA MONITORINGI</p>
-        <h1>ZaminTahlil</h1>
-        <p class="lead">
-          Dalalarni bitta boshqaruv oynasida kuzating: kontur chizing, Sentinel-2 tasvirlarini taqqoslang,
-          indekslarni tekshiring va amaliy tavsiyalar oling.
+        <p class="eyebrow" data-i18n="header.eyebrow">RAQAMLI DALA MONITORINGI</p>
+        <h1 data-i18n="header.title">ZaminTahlil</h1>
+        <p class="lead" data-i18n="header.lead">
+          Dalalarni bitta boshqaruv oynasida kuzating.
         </p>
       </div>
       <div class="masthead-side">
         <div class="status-card">
-          <span class="status-label">Tizim holati</span>
+          <span class="status-label" data-i18n="nav.statusLabel">Tizim holati</span>
           <div id="apiStatus" class="status-pill" data-state="loading">Server tekshirilmoqda...</div>
         </div>
         <div class="mini-stats">
           <article class="mini-stat">
-            <span>Jami dalalar</span>
+            <span data-i18n="stats.fields">Jami dalalar</span>
             <strong id="fieldCount">0</strong>
           </article>
           <article class="mini-stat">
-            <span>Tanlangan maydon</span>
-            <strong id="selectedAreaStat">-</strong>
+            <span data-i18n="stats.selectedArea">Tanlangan maydon</span>
+            <strong id="selectedAreaStat">—</strong>
           </article>
           <article class="mini-stat">
-            <span>Oxirgi kuzatuv</span>
-            <strong id="latestCaptureStat">-</strong>
+            <span data-i18n="stats.latestCapture">Oxirgi kuzatuv</span>
+            <strong id="latestCaptureStat">—</strong>
           </article>
         </div>
       </div>
@@ -49,26 +66,25 @@
       <section class="hero-layout">
         <article class="story-card panel">
           <div class="section-heading">
-            <span class="step">01</span>
+            <span class="step" data-i18n="story.step">01</span>
             <div>
-              <p class="eyebrow">BOSHLANG'ICH QADAM</p>
-              <h2>Nazorat markazi</h2>
+              <p class="eyebrow" data-i18n="story.eyebrow">BOSHLANG'ICH QADAM</p>
+              <h2 data-i18n="story.title">Nazorat markazi</h2>
             </div>
           </div>
-          <p class="story-copy">
-            Ish oqimi oddiy: avval dala konturini chizing, keyin ekin ma'lumotlarini kiriting. Saqlangan dala
-            bo'yicha tasvir, tavsiya va yillik dinamika avtomatik ochiladi.
+          <p class="story-copy" data-i18n="story.copy">
+            Ish oqimi oddiy.
           </p>
           <div class="highlight-grid">
             <div class="highlight-card">
-              <span class="highlight-kicker">Xarita holati</span>
-              <strong id="selectionState">Dala tanlanmagan</strong>
-              <p>Saqlangan dalani bosing yoki yangi polygon chizing.</p>
+              <span class="highlight-kicker" data-i18n="story.mapStateLabel">Xarita holati</span>
+              <strong id="selectionState" data-i18n="story.fieldNotSelected">Dala tanlanmagan</strong>
+              <p data-i18n="story.mapStateHint">Saqlangan dalani bosing yoki yangi polygon chizing.</p>
             </div>
             <div class="highlight-card">
-              <span class="highlight-kicker">Kontur bo'yicha</span>
-              <strong id="draftGuide">Polygon chizishni boshlang</strong>
-              <p>Maydon avtomatik hisoblanadi va serverda qayta tekshiriladi.</p>
+              <span class="highlight-kicker" data-i18n="story.contourLabel">Kontur bo'yicha</span>
+              <strong id="draftGuide" data-i18n="story.contourStart">Polygon chizishni boshlang</strong>
+              <p data-i18n="story.contourHint">Maydon avtomatik hisoblanadi va serverda qayta tekshiriladi.</p>
             </div>
           </div>
         </article>
@@ -76,44 +92,44 @@
         <section class="workspace-card panel">
           <div class="workspace-top">
             <div>
-              <p class="eyebrow">XARITA WORKSPACE</p>
-              <h2>Dala konturi va tanlov</h2>
+              <p class="eyebrow" data-i18n="workspace.eyebrow">XARITA WORKSPACE</p>
+              <h2 data-i18n="workspace.title">Dala konturi va tanlov</h2>
             </div>
-            <div class="map-badge">Uzbekistan view</div>
+            <div class="map-badge" data-i18n="workspace.badge">Uzbekistan view</div>
           </div>
           <div class="map-shell">
             <div id="map" aria-label="Dala xaritasi"></div>
-            <div class="map-hint">Yangi dala uchun polygon chizing yoki saqlangan ko'k maydonni tanlang.</div>
+            <div class="map-hint" data-i18n="workspace.hint">Yangi dala uchun polygon chizing yoki saqlangan ko'k maydonni tanlang.</div>
           </div>
         </section>
 
         <aside class="composer-card panel">
           <div class="section-heading">
-            <span class="step">02</span>
+            <span class="step" data-i18n="composer.step">02</span>
             <div>
-              <p class="eyebrow">YANGI DALA</p>
-              <h2>Ma'lumotlarni kiriting</h2>
+              <p class="eyebrow" data-i18n="composer.eyebrow">YANGI DALA</p>
+              <h2 data-i18n="composer.title">Ma'lumotlarni kiriting</h2>
             </div>
           </div>
 
           <form id="fieldForm" class="field-form">
             <label>
-              Hisoblangan maydon
-              <output id="draftArea">Avval xaritada polygon chizing</output>
+              <span data-i18n="composer.areaLabel">Hisoblangan maydon</span>
+              <output id="draftArea" data-i18n="composer.areaPlaceholder">Avval xaritada polygon chizing</output>
             </label>
             <label>
-              O'simlik yoki ekin nomi
-              <input id="cropName" maxlength="120" required placeholder="Masalan: Paxta">
+              <span data-i18n="composer.cropLabel">O'simlik yoki ekin nomi</span>
+              <input id="cropName" maxlength="120" required data-i18n-placeholder="composer.cropPlaceholder" placeholder="Masalan: Paxta">
             </label>
             <label>
-              Ekin ekilgan sana
+              <span data-i18n="composer.plantedLabel">Ekin ekilgan sana</span>
               <input id="plantedOn" type="date" required>
             </label>
             <label>
-              Rivojlanish bosqichi
-              <input id="growthStage" maxlength="120" required placeholder="Masalan: Gullash bosqichi">
+              <span data-i18n="composer.stageLabel">Rivojlanish bosqichi</span>
+              <input id="growthStage" maxlength="120" required data-i18n-placeholder="composer.stagePlaceholder" placeholder="Masalan: Gullash bosqichi">
             </label>
-            <button class="primary" type="submit">Dalani saqlash</button>
+            <button class="primary" type="submit" data-i18n="composer.submit">Dalani saqlash</button>
           </form>
 
           <div id="formMessage" class="message" role="status"></div>
@@ -121,75 +137,80 @@
       </section>
 
       <section id="emptyState" class="panel empty-panel">
-        <p class="eyebrow">TANLOV KUTILMOQDA</p>
-        <h2>Tahlil paneli hali ochilmagan</h2>
-        <p>
-          Saqlangan dala tanlangach, shu sahifada tasvirlarni solishtirish, AI tavsiyalar va yillik indekslar
-          ko'rinadi.
+        <p class="eyebrow" data-i18n="empty.eyebrow">TANLOV KUTILMOQDA</p>
+        <h2 data-i18n="empty.title">Tahlil paneli hali ochilmagan</h2>
+        <p data-i18n="empty.copy">
+          Saqlangan dala tanlangach, shu sahifada tahlil ko'rinadi.
         </p>
       </section>
 
       <section id="detail" class="detail hidden" aria-live="polite">
         <div class="detail-banner panel">
           <div class="detail-copy">
-            <p class="eyebrow">TANLANGAN DALA</p>
+            <p class="eyebrow" data-i18n="detail.eyebrow">TANLANGAN DALA</p>
             <h2 id="fieldTitle">-</h2>
             <p id="fieldMeta" class="muted">-</p>
           </div>
 
           <div class="analysis-controls">
             <label>
-              Tahlil rejimi
+              <span data-i18n="detail.modeLabel">Tahlil rejimi</span>
               <select id="analysisMode">
-                <option value="latest">Oxirgi ma'lumot</option>
-                <option value="latest_cloud_free">Oxirgi bulutsiz ma'lumot</option>
+                <option value="latest" data-i18n="detail.modeLatest">Oxirgi ma'lumot</option>
+                <option value="latest_cloud_free" data-i18n="detail.modeLatestCloudFree">Oxirgi bulutsiz ma'lumot</option>
               </select>
             </label>
-            <button id="analyzeButton" class="primary" type="button">Tahlil qilish</button>
+            <button id="analyzeButton" class="primary" type="button" data-i18n="detail.analyzeButton">Tahlil qilish</button>
           </div>
 
           <div id="analysisMessage" class="message wide" role="status"></div>
         </div>
 
-        <div class="detail-grid">
+        <!--
+          Yangi tartib (yuqoridan pastga):
+          1) Sun'iy yo'ldosh tasvirlari  — to'liq kenglikda
+          2) AI tavsiyasi                — to'liq kenglikda, kartalari yonma-yon
+          3) Savol-javob (chat)          — eng pastda
+        -->
+        <div class="detail-stack">
           <section class="panel viewer-panel">
             <div class="section-heading row-between">
               <div>
-                <p class="eyebrow">SUN'IY YO'LDOSH TASVIRLARI</p>
-                <h2>Qatlam va vaqt taqqoslovi</h2>
+                <p class="eyebrow" data-i18n="viewer.eyebrow">SUN'IY YO'LDOSH TASVIRLARI</p>
+                <h2 data-i18n="viewer.title">Qatlam va vaqt taqqoslovi</h2>
               </div>
               <label class="switch-label">
                 <input id="compareToggle" type="checkbox">
-                Solishtirish rejimi
+                <span data-i18n="viewer.compareLabel">Solishtirish rejimi</span>
               </label>
             </div>
 
             <div class="selector-grid">
               <fieldset>
-                <legend>A tasvir</legend>
+                <legend data-i18n="viewer.legendA">A tasvir</legend>
                 <div class="nav-control">
-                  <button id="prevLayerA" type="button" title="Oldingi qatlam">←</button>
+                  <button id="prevLayerA" type="button" data-i18n-title="viewer.prevLayer" title="Oldingi qatlam">←</button>
                   <select id="layerA"></select>
-                  <button id="nextLayerA" type="button" title="Keyingi qatlam">→</button>
+                  <button id="nextLayerA" type="button" data-i18n-title="viewer.nextLayer" title="Keyingi qatlam">→</button>
                 </div>
                 <div class="nav-control">
-                  <button id="prevDateA" type="button" title="Oldingi sana">←</button>
+                  <button id="prevDateA" type="button" data-i18n-title="viewer.prevDate" title="Oldingi sana">←</button>
                   <select id="dateA"></select>
-                  <button id="nextDateA" type="button" title="Keyingi sana">→</button>
+                  <button id="nextDateA" type="button" data-i18n-title="viewer.nextDate" title="Keyingi sana">→</button>
                 </div>
               </fieldset>
 
               <fieldset id="bControls" class="hidden">
-                <legend>B tasvir</legend>
+                <legend data-i18n="viewer.legendB">B tasvir</legend>
                 <div class="nav-control">
-                  <button id="prevLayerB" type="button" title="Oldingi qatlam">←</button>
+                  <button id="prevLayerB" type="button" data-i18n-title="viewer.prevLayer" title="Oldingi qatlam">←</button>
                   <select id="layerB"></select>
-                  <button id="nextLayerB" type="button" title="Keyingi qatlam">→</button>
+                  <button id="nextLayerB" type="button" data-i18n-title="viewer.nextLayer" title="Keyingi qatlam">→</button>
                 </div>
                 <div class="nav-control">
-                  <button id="prevDateB" type="button" title="Oldingi sana">←</button>
+                  <button id="prevDateB" type="button" data-i18n-title="viewer.prevDate" title="Oldingi sana">←</button>
                   <select id="dateB"></select>
-                  <button id="nextDateB" type="button" title="Keyingi sana">→</button>
+                  <button id="nextDateB" type="button" data-i18n-title="viewer.nextDate" title="Keyingi sana">→</button>
                 </div>
               </fieldset>
             </div>
@@ -199,17 +220,17 @@
               <span class="viewer-label label-a">A</span>
               <span id="labelB" class="viewer-label label-b hidden">B</span>
               <div id="viewerState" class="viewer-state">Acquisition mavjud emas</div>
-              <input id="swipe" class="swipe hidden" type="range" min="5" max="95" value="50" aria-label="A va B tasvir divideri">
+              <input id="swipe" class="swipe hidden" type="range" min="5" max="95" value="50" aria-label="A/B divider">
             </div>
 
             <div id="mobileCompare" class="mobile-compare hidden">
-              <button data-side="A" type="button">A ni ko'rsatish</button>
-              <button data-side="B" type="button">B ni ko'rsatish</button>
+              <button data-side="A" type="button" data-i18n="viewer.mobileA">A ni ko'rsatish</button>
+              <button data-side="B" type="button" data-i18n="viewer.mobileB">B ni ko'rsatish</button>
             </div>
 
             <div class="viewer-options">
-              <label>Shaffoflik <input id="opacity" type="range" min="10" max="100" value="100"></label>
-              <label><input id="qaToggle" type="checkbox"> QA yoki maska</label>
+              <label><span data-i18n="viewer.opacityLabel">Shaffoflik</span> <input id="opacity" type="range" min="10" max="100" value="100"></label>
+              <label><input id="qaToggle" type="checkbox"> <span data-i18n="viewer.qaLabel">QA yoki maska</span></label>
             </div>
 
             <div id="imageMeta" class="image-meta"></div>
@@ -222,43 +243,41 @@
             </div>
           </section>
 
-          <div class="side-stack">
-            <section class="panel recommendation-panel">
-              <p class="eyebrow">AI TAVSIYASI</p>
-              <h2>Dalaga amaliy xulosa</h2>
-              <div id="recommendation" class="recommendation">
-                <p class="muted">Tahlildan keyin tavsiya shu yerda chiqadi.</p>
-              </div>
-            </section>
+          <section class="panel recommendation-panel">
+            <p class="eyebrow" data-i18n="recommendation.eyebrow">AI TAVSIYASI</p>
+            <h2 data-i18n="recommendation.title">Dalaga amaliy xulosa</h2>
+            <div id="recommendation" class="recommendation">
+              <p class="muted" data-i18n="recommendation.placeholder">Tahlildan keyin tavsiya shu yerda chiqadi.</p>
+            </div>
+          </section>
 
-            <section class="panel chat-panel">
-              <p class="eyebrow">SAVOL-JAVOB</p>
-              <h2>Dalaga oid savol yuboring</h2>
-              <div class="chat" id="chatLog"></div>
-              <form id="chatForm" class="chat-form">
-                <label for="chatInput">Savolingiz</label>
-                <textarea id="chatInput" maxlength="10000" rows="4" required placeholder="Masalan: NDVI pasayishi nimani anglatadi?"></textarea>
-                <button class="secondary" type="submit">Savol yuborish</button>
-              </form>
-              <p class="privacy-note">Chatning oxirgi xabarlari shu brauzer sessiyasida saqlanadi.</p>
-            </section>
-          </div>
+          <section class="panel chat-panel">
+            <p class="eyebrow" data-i18n="chat.eyebrow">SAVOL-JAVOB</p>
+            <h2 data-i18n="chat.title">Dalaga oid savol yuboring</h2>
+            <div class="chat" id="chatLog"></div>
+            <form id="chatForm" class="chat-form">
+              <label for="chatInput"><span data-i18n="chat.inputLabel">Savolingiz</span></label>
+              <textarea id="chatInput" maxlength="10000" rows="4" required data-i18n-placeholder="chat.inputPlaceholder" placeholder="Masalan: NDVI pasayishi nimani anglatadi?"></textarea>
+              <button class="secondary" type="submit" data-i18n="chat.submit">Savol yuborish</button>
+            </form>
+            <p class="privacy-note" data-i18n="chat.privacy">Chatning oxirgi xabarlari shu brauzer sessiyasida saqlanadi.</p>
+          </section>
         </div>
 
         <section class="panel chart-panel">
           <div class="section-heading row-between">
             <div>
-              <p class="eyebrow">YILLIK DINAMIKA</p>
-              <h2>Asosiy indekslar harakati</h2>
+              <p class="eyebrow" data-i18n="chart.eyebrow">YILLIK DINAMIKA</p>
+              <h2 data-i18n="chart.title">Asosiy indekslar harakati</h2>
             </div>
             <div class="chart-filters">
-              <label>Yil <select id="chartYear"></select></label>
+              <label><span data-i18n="chart.yearLabel">Yil</span> <select id="chartYear"></select></label>
               <label>
-                Boshlanish sanasi
+                <span data-i18n="chart.fromDateLabel">Boshlanish sanasi</span>
                 <input id="chartFromDate" type="date">
               </label>
-              <button id="loadHistoryButton" class="secondary" type="button">Hozirgacha yuklash</button>
-              <span class="chart-note">Har nuqta bir kuzatuv bo'yicha indeks qiymatini ko'rsatadi.</span>
+              <button id="loadHistoryButton" class="secondary" type="button" data-i18n="chart.loadButton">Hozirgacha yuklash</button>
+              <span class="chart-note" data-i18n="chart.note">Har nuqta bir kuzatuv bo'yicha indeks qiymatini ko'rsatadi.</span>
             </div>
           </div>
 
@@ -266,7 +285,7 @@
           <div id="metricChecks" class="metric-checks"></div>
           <div class="chart-wrap">
             <canvas id="annualChart"></canvas>
-            <div id="chartEmpty" class="viewer-state">Kuzatuv mavjud emas</div>
+            <div id="chartEmpty" class="viewer-state" data-i18n="chart.emptyState">Kuzatuv mavjud emas</div>
           </div>
         </section>
       </section>
@@ -276,6 +295,12 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
+  <!-- Chatdagi AI javoblarini markdown (**qalin**, ro'yxatlar, sarlavhalar) sifatida
+       render qilish uchun: marked.js matnni HTML'ga aylantiradi, DOMPurify esa
+       natijani xavfsizlashtiradi (XSS'dan himoya) — chunki bu HTML innerHTML sifatida qo'yiladi. -->
+  <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
+  <script src="/i18n.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>

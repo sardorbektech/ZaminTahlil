@@ -1,4 +1,4 @@
-/* global L, Chart */
+/* global L, Chart, i18n, marked, DOMPurify */
 const LAYERS = ["RGB", "NDVI", "NDMI", "NDRE", "EVI", "BSI"];
 const METRICS = ["NDVI", "NDMI", "NDRE", "EVI", "BSI"];
 const COLORS = {
@@ -10,6 +10,35 @@ const COLORS = {
 };
 
 const $ = (id) => document.getElementById(id);
+const t = (key, vars) => i18n.t(key, vars);
+
+// Markdown -> xavfsiz HTML render sozlamalari (chat javoblari uchun).
+// GFM (jadval, ro'yxat, satr ichi kod) yoqilgan, xom HTML esa kirish satrida
+// bloklanadi (sanitize bosqichida yana bir bor tozalanadi).
+if (typeof marked !== "undefined") {
+  marked.setOptions({
+    breaks: true,
+    gfm: true
+  });
+}
+
+function renderMarkdown(text) {
+  if (typeof marked === "undefined" || typeof DOMPurify === "undefined") {
+    // Kutubxona yuklanmagan bo'lsa, xavfsiz fallback sifatida oddiy matn qaytariladi.
+    return escapeHtml(text);
+  }
+  const rawHtml = marked.parse(String(text ?? ""));
+  return DOMPurify.sanitize(rawHtml, {
+    ALLOWED_TAGS: [
+      "p", "br", "strong", "em", "b", "i", "u", "s", "del",
+      "ul", "ol", "li", "blockquote", "code", "pre",
+      "h1", "h2", "h3", "h4", "h5", "h6",
+      "a", "table", "thead", "tbody", "tr", "th", "td", "hr"
+    ],
+    ALLOWED_ATTR: ["href", "target", "rel"]
+  });
+}
+
 const state = {
   fieldId: null,
   field: null,
@@ -21,46 +50,67 @@ const state = {
   compare: false,
   mobileSide: "A",
   chart: null,
-  chartFromDate: null
+  chartFromDate: null,
+  // caches kept only so the UI can be re-rendered in the new language
+  // without re-hitting the backend when the person switches languages.
+  recommendation: null,
+  lastMetaInfo: null,
+  lastChartSeries: null,
+  statusKey: "nav.statusLoading",
+  statusState: "loading"
 };
 
+/* ---------- Global request loader (shown for every backend call) ---------- */
+
+let pendingRequests = 0;
+
+function beginRequest() {
+  pendingRequests += 1;
+  $("globalLoader").classList.add("active");
+}
+
+function endRequest() {
+  pendingRequests = Math.max(0, pendingRequests - 1);
+  if (pendingRequests === 0) $("globalLoader").classList.remove("active");
+}
+
 async function api(path, options = {}) {
-  const response = await fetch(path, {
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
-    ...options
-  });
+  beginRequest();
+  try {
+    const response = await fetch(path, {
+      headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+      ...options
+    });
 
-  if (!response.ok) {
-    let messageText = `Xato (${response.status})`;
-    try {
-      const body = await response.json();
-      if (Array.isArray(body.detail)) {
-        messageText = body.detail
-          .map((d) => `${(d.loc || []).join(".")}: ${d.msg}`)
-          .join("; ");
-      } else if (typeof body.detail === "string") {
-        messageText = body.detail;
-      }
-    } catch {}
-    throw new Error(messageText);
+    if (!response.ok) {
+      let messageText = t("error.generic", { status: response.status });
+      try {
+        const body = await response.json();
+        if (Array.isArray(body.detail)) {
+          messageText = body.detail.map((d) => `${(d.loc || []).join(".")}: ${d.msg}`).join("; ");
+        } else if (typeof body.detail === "string") {
+          messageText = body.detail;
+        }
+      } catch {}
+      throw new Error(messageText);
+    }
+
+    return response.status === 204 ? null : response.json();
+  } finally {
+    endRequest();
   }
-
-  return response.status === 204 ? null : response.json();
 }
 
 const formatDate = (value) =>
-  value
-    ? new Intl.DateTimeFormat("uz-UZ", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value))
-    : "-";
+  value ? new Intl.DateTimeFormat(i18n.getLocale(), { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "-";
 
 const formatShortDate = (value) =>
-  value
-    ? new Intl.DateTimeFormat("uz-UZ", { day: "2-digit", month: "short", year: "numeric" }).format(new Date(value))
-    : "-";
+  value ? new Intl.DateTimeFormat(i18n.getLocale(), { day: "2-digit", month: "short", year: "numeric" }).format(new Date(value)) : "-";
 
-function message(element, text, error = false) {
+function message(element, text, error = false, loading = false) {
   element.textContent = text;
   element.classList.toggle("error", error);
+  element.classList.toggle("is-loading", loading && !error);
 }
 
 function setOptionalText(id, text) {
@@ -68,20 +118,22 @@ function setOptionalText(id, text) {
   if (element) element.textContent = text;
 }
 
-function setStatus(text, stateName) {
+function setStatus(key, stateName) {
+  state.statusKey = key;
+  state.statusState = stateName;
   const element = $("apiStatus");
-  element.textContent = text;
+  element.textContent = t(key);
   element.dataset.state = stateName;
 }
 
 function updateSummary() {
   setOptionalText("fieldCount", String(state.fields.length));
-  setOptionalText("selectionState", state.field ? "Dala tanlandi" : "Dala tanlanmagan");
-  setOptionalText("draftGuide", state.draft ? "Kontur tayyor, formani to'ldiring" : "Polygon chizishni boshlang");
-  setOptionalText("selectedAreaStat", state.field ? `${state.field.area_hectares.toFixed(2)} ga` : "-");
+  setOptionalText("selectionState", state.field ? t("story.fieldSelected") : t("story.fieldNotSelected"));
+  setOptionalText("draftGuide", state.draft ? t("story.contourReady") : t("story.contourStart"));
+  setOptionalText("selectedAreaStat", state.field ? `${state.field.area_hectares.toFixed(2)} ${t("units.ha")}` : t("stats.dash"));
   setOptionalText(
     "latestCaptureStat",
-    state.acquisitions.length ? formatShortDate(state.acquisitions[0].acquired_at) : "Tahlil qilinmagan"
+    state.acquisitions.length ? formatShortDate(state.acquisitions[0].acquired_at) : t("stats.notAnalyzed")
   );
 }
 
@@ -119,7 +171,7 @@ map.on(L.Draw.Event.CREATED, (event) => {
   draftLayer.addLayer(event.layer);
   state.draft = event.layer.toGeoJSON().geometry;
   const area = L.GeometryUtil.geodesicArea(event.layer.getLatLngs()[0]) / 10000;
-  $("draftArea").textContent = `${area.toFixed(3)} ga (server qayta hisoblaydi)`;
+  $("draftArea").textContent = t("composer.areaReady", { area: area.toFixed(3) });
   updateSummary();
 });
 
@@ -127,12 +179,12 @@ const imageMap = L.map("imageMap", { zoomControl: true, attributionControl: true
 
 L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
   maxZoom: 20,
-  attribution: "Tasvirlar © Esri"
+  attribution: "Imagery © Esri"
 }).addTo(imageMap);
 
 L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}", {
   maxZoom: 20,
-  attribution: "Nomlar © Esri"
+  attribution: "Labels © Esri"
 }).addTo(imageMap);
 
 function geoBounds(bbox) {
@@ -151,7 +203,7 @@ function drawFieldBoundary() {
   if (!state.field) return;
   state.overlays.field = L.geoJSON(state.field.geometry, {
     interactive: false,
-    style: { color: "#1687ff", weight: 4, opacity: 1, fill: false }
+    style: { color: "#2457b8", weight: 4, opacity: 1, fill: false }
   }).addTo(imageMap);
   state.overlays.field.bringToFront();
 }
@@ -163,7 +215,7 @@ async function loadFields(fit = false) {
 
   state.fields.forEach((field) => {
     const layer = L.geoJSON(field.geometry, {
-      style: { color: "#2b79ad", weight: 2, fillColor: "#4f9bc6", fillOpacity: 0.26 }
+      style: { color: "#2457b8", weight: 2, fillColor: "#5c93e0", fillOpacity: 0.24 }
     }).addTo(savedLayer);
 
     layer.on("click", (event) => {
@@ -185,10 +237,10 @@ $("fieldForm").addEventListener("submit", async (event) => {
   event.preventDefault();
 
   if (!state.draft) {
-    return message($("formMessage"), "Avval xaritada polygon chizing.", true);
+    return message($("formMessage"), t("composer.msgNoDraft"), true);
   }
 
-  message($("formMessage"), "Dala saqlanmoqda...");
+  message($("formMessage"), t("composer.msgSaving"), false, true);
 
   try {
     const field = await api("/api/fields", {
@@ -204,9 +256,9 @@ $("fieldForm").addEventListener("submit", async (event) => {
     event.target.reset();
     draftLayer.clearLayers();
     state.draft = null;
-    $("draftArea").textContent = "Avval xaritada polygon chizing";
+    $("draftArea").textContent = t("composer.areaPlaceholder");
     await loadFields();
-    message($("formMessage"), `Dala saqlandi: ${field.area_hectares.toFixed(3)} ga`);
+    message($("formMessage"), t("composer.msgSaved", { area: field.area_hectares.toFixed(3) }));
     await selectField(field.id);
   } catch (error) {
     message($("formMessage"), error.message, true);
@@ -223,7 +275,7 @@ async function selectField(fieldId) {
   $("detail").classList.remove("hidden");
 
   requestAnimationFrame(() => imageMap.invalidateSize());
-  message($("analysisMessage"), "Dala ma'lumotlari yuklanmoqda...");
+  message($("analysisMessage"), t("detail.msgLoadingField"), false, true);
 
   try {
     const [field, acquisitions] = await Promise.all([
@@ -236,11 +288,10 @@ async function selectField(fieldId) {
       (a, b) => new Date(b.acquired_at).getTime() - new Date(a.acquired_at).getTime()
     );
     state.artifacts.clear();
+    state.recommendation = field.recommendation || null;
 
-    $("fieldTitle").textContent = field.crop_name;
-    $("fieldMeta").textContent = `${field.area_hectares.toFixed(3)} ga | Ekilgan: ${field.planted_on} | ${field.growth_stage}`;
-
-    renderAdvice(field.recommendation);
+    renderFieldHeader();
+    renderAdvice(state.recommendation);
     populateDateSelectors();
     restoreChat();
     await refreshViewer();
@@ -249,11 +300,23 @@ async function selectField(fieldId) {
 
     message(
       $("analysisMessage"),
-      state.acquisitions.length ? `${state.acquisitions.length} ta kuzatuv mavjud.` : "Hali tahlil qilinmagan."
+      state.acquisitions.length
+        ? t("detail.msgHasAcquisitions", { count: state.acquisitions.length })
+        : t("detail.msgNoAcquisitions")
     );
   } catch (error) {
     message($("analysisMessage"), error.message, true);
   }
+}
+
+function renderFieldHeader() {
+  if (!state.field) return;
+  $("fieldTitle").textContent = state.field.crop_name;
+  $("fieldMeta").textContent = t("detail.metaTemplate", {
+    area: state.field.area_hectares.toFixed(3),
+    planted: state.field.planted_on,
+    stage: state.field.growth_stage
+  });
 }
 
 $("analyzeButton").addEventListener("click", async () => {
@@ -261,7 +324,7 @@ $("analyzeButton").addEventListener("click", async () => {
 
   const button = $("analyzeButton");
   button.disabled = true;
-  message($("analysisMessage"), "Sentinel Hub'dan oxirgi 5 ta tasvir tekshirilmoqda...");
+  message($("analysisMessage"), t("detail.msgAnalyzing"), false, true);
 
   try {
     const result = await api(`/api/fields/${state.fieldId}/analyze`, {
@@ -269,7 +332,8 @@ $("analyzeButton").addEventListener("click", async () => {
       body: JSON.stringify({ mode: $("analysisMode").value })
     });
 
-    renderAdvice(result.recommendation);
+    state.recommendation = result.recommendation || null;
+    renderAdvice(state.recommendation);
     state.acquisitions = await api(`/api/fields/${state.fieldId}/acquisitions`);
     state.acquisitions.sort((a, b) => new Date(b.acquired_at).getTime() - new Date(a.acquired_at).getTime());
     state.artifacts.clear();
@@ -279,12 +343,15 @@ $("analyzeButton").addEventListener("click", async () => {
     updateSummary();
 
     const cloud = result.selected_acquisition.cloud_coverage;
+    const cloudText = cloud == null ? t("detail.cloudNone") : t("detail.cloudPct", { value: cloud });
     const suffix = result.recommendation_error ? ` ${result.recommendation_error}` : "";
     message(
       $("analysisMessage"),
-      `${result.new_acquisitions_processed} ta yangi kuzatuv qayta ishlandi. Tanlangan sana: ${formatDate(
-        result.selected_acquisition.acquired_at
-      )}, bulut: ${cloud == null ? "mavjud emas" : `${cloud}%`}.${suffix}`,
+      `${t("detail.msgAnalyzeResult", {
+        count: result.new_acquisitions_processed,
+        date: formatDate(result.selected_acquisition.acquired_at),
+        cloud: cloudText
+      })}${suffix}`,
       Boolean(result.recommendation_error)
     );
   } catch (error) {
@@ -304,7 +371,7 @@ function fillSelect(select, values, selected) {
 function populateDateSelectors(selectedId = null) {
   const options = state.acquisitions.map((item) => [
     item.id,
-    `${formatDate(item.acquired_at)} | ${item.cloud_coverage == null ? "?" : `${item.cloud_coverage}%`}`
+    `${formatDate(item.acquired_at)} · ${item.cloud_coverage == null ? "?" : `${item.cloud_coverage}%`}`
   ]);
 
   const currentA = selectedId || $("dateA").value || options[0]?.[0];
@@ -351,7 +418,7 @@ async function makeOverlay(side) {
     crossOrigin: false
   });
 
-  overlay.on("error", () => showViewerState("Tasvirni yuklashda xato yuz berdi"));
+  overlay.on("error", () => showViewerState(t("viewer.stateError")));
   overlay.addTo(imageMap);
   return { overlay, artifact, acquisition, layer };
 }
@@ -373,11 +440,11 @@ async function refreshViewer(fit = true) {
   clearOverlay("a");
   clearOverlay("b");
   clearOverlay("qa");
-  showViewerState("Tasvir yuklanmoqda...");
+  showViewerState(t("viewer.stateLoading"));
   drawFieldBoundary();
 
   if (!state.acquisitions.length) {
-    showViewerState("Acquisition mavjud emas. Tahlil tugmasini bosing.");
+    showViewerState(t("viewer.stateNoAcquisition"));
     renderMeta(null);
     updateSummary();
     return;
@@ -388,8 +455,8 @@ async function refreshViewer(fit = true) {
     if (!a) {
       const fallback =
         selectedAcquisition("A")?.fully_cloudy && selectedLayer("A") !== "RGB"
-          ? "To'liq bulutli: indeks uchun yaroqli piksel yo'q"
-          : "Bu qatlam uchun artifact mavjud emas";
+          ? t("viewer.stateFullyCloudy")
+          : t("viewer.stateNoArtifact");
       showViewerState(fallback);
       renderMeta(null);
       updateSummary();
@@ -428,6 +495,7 @@ async function addQa() {
 }
 
 function renderMeta(info) {
+  state.lastMetaInfo = info;
   if (!info) {
     $("imageMeta").innerHTML = "";
     $("legend").classList.add("hidden");
@@ -436,15 +504,15 @@ function renderMeta(info) {
 
   const acquisition = info.acquisition;
   const data = [
-    ["Qatlam", info.layer],
-    ["Sana", formatDate(acquisition.acquired_at)],
-    ["Product ID", acquisition.product_id],
-    ["Bulut", acquisition.cloud_coverage == null ? "Mavjud emas" : `${acquisition.cloud_coverage}%`],
-    ["Yaroqli piksel", acquisition.valid_pixel_count ?? "Mavjud emas"]
+    [t("imageMeta.layer"), info.layer],
+    [t("imageMeta.date"), formatDate(acquisition.acquired_at)],
+    [t("imageMeta.productId"), acquisition.product_id],
+    [t("imageMeta.cloud"), acquisition.cloud_coverage == null ? t("imageMeta.notAvailable") : `${acquisition.cloud_coverage}%`],
+    [t("imageMeta.validPixels"), acquisition.valid_pixel_count ?? t("imageMeta.notAvailable")]
   ];
 
   $("imageMeta").innerHTML = data
-    .map(([key, value]) => `<div class="datum">${key}<strong>${escapeHtml(String(value))}</strong></div>`)
+    .map(([key, value]) => `<div class="datum">${escapeHtml(key)}<strong>${escapeHtml(String(value))}</strong></div>`)
     .join("");
 
   $("legend").classList.toggle("hidden", !METRICS.includes(info.layer));
@@ -540,13 +608,13 @@ $("loadHistoryButton").addEventListener("click", async () => {
   if (!state.fieldId) return;
   const fromDate = $("chartFromDate").value;
   if (!fromDate) {
-    message($("chartMessage"), "Boshlanish sanasini tanlang.", true);
+    message($("chartMessage"), t("chart.msgChooseDate"), true);
     return;
   }
 
   const button = $("loadHistoryButton");
   button.disabled = true;
-  message($("chartMessage"), `${fromDate} sanasidan hozirgacha ma'lumotlar yuklanmoqda...`);
+  message($("chartMessage"), t("chart.msgLoading", { date: fromDate }), false, true);
   try {
     const result = await api(`/api/fields/${state.fieldId}/historical-metrics`, {
       method: "POST",
@@ -556,7 +624,7 @@ $("loadHistoryButton").addEventListener("click", async () => {
     renderChart(result.series);
     message(
       $("chartMessage"),
-      `${result.acquisitions_found} ta kuzatuv topildi, ${result.new_acquisitions_processed} tasi yangi qayta ishlandi.`
+      t("chart.msgResult", { found: result.acquisitions_found, processed: result.new_acquisitions_processed })
     );
   } catch (error) {
     message($("chartMessage"), error.message, true);
@@ -576,6 +644,7 @@ async function refreshChart() {
 }
 
 function renderChart(series) {
+  state.lastChartSeries = series;
   const selected = [...metricChecks.querySelectorAll("input:checked")].map((item) => item.value);
   const datasets = selected.map((name) => ({
     label: name,
@@ -601,6 +670,7 @@ function renderChart(series) {
   if (state.chart) state.chart.destroy();
   $("chartEmpty").classList.toggle("hidden", series.points.length > 0 && selected.length > 0);
 
+  const locale = i18n.getLocale();
   state.chart = new Chart($("annualChart"), {
     type: "line",
     data: { datasets },
@@ -613,24 +683,24 @@ function renderChart(series) {
         x: {
           type: "linear",
           ticks: {
-            callback: (value) => new Date(value).toLocaleDateString("uz-UZ")
+            callback: (value) => new Date(value).toLocaleDateString(locale)
           }
         },
         y: {
           min: -1,
           max: 1,
-          title: { display: true, text: "Indeks qiymati" }
+          title: { display: true, text: t("chart.axisTitle") }
         }
       },
       plugins: {
         legend: { position: "bottom" },
         tooltip: {
           callbacks: {
-            title: (items) => (items.length ? new Date(items[0].raw.x).toLocaleString("uz-UZ") : ""),
+            title: (items) => (items.length ? new Date(items[0].raw.x).toLocaleString(locale) : ""),
             label: (item) =>
-              `${item.dataset.label}: ${item.raw.y == null ? "bulut yoki no-data" : item.raw.y.toFixed(3)} | bulut ${
-                item.raw.cloud ?? "?"
-              }%`
+              `${item.dataset.label}: ${
+                item.raw.y == null ? t("chart.tooltipNoData") : item.raw.y.toFixed(3)
+              } | ${t("chart.tooltipCloud", { value: item.raw.cloud ?? "?" })}`
           }
         }
       }
@@ -639,32 +709,33 @@ function renderChart(series) {
 }
 
 function renderAdvice(recommendation) {
+  state.recommendation = recommendation || null;
   const target = $("recommendation");
   if (!recommendation) {
-    target.innerHTML = '<p class="muted">Tahlildan keyin tavsiya shu yerda chiqadi.</p>';
+    target.innerHTML = `<p class="muted">${escapeHtml(t("recommendation.placeholder"))}</p>`;
     return;
   }
 
   const groups = [
-    ["red", "Qilinishi shart", "Eng ustuvor ishlar"],
-    ["yellow", "Chora ko'rilishi kerak", "Nazorat va ehtiyot chorasi"],
-    ["green", "Yaxshi jarayonlar", "Ijobiy holatlar"]
+    ["red", t("recommendation.groupRedTitle"), t("recommendation.groupRedSub")],
+    ["yellow", t("recommendation.groupYellowTitle"), t("recommendation.groupYellowSub")],
+    ["green", t("recommendation.groupGreenTitle"), t("recommendation.groupGreenSub")]
   ];
 
   const cards = groups
     .filter(([key]) => recommendation.advice?.[key]?.length)
     .map(
       ([key, title, subtitle]) =>
-        `<section class="advice-card ${key}"><div><strong>${title}</strong><small>${subtitle}</small></div><ul>${recommendation.advice[
-          key
-        ]
+        `<section class="advice-card ${key}"><div><strong>${escapeHtml(title)}</strong><small>${escapeHtml(
+          subtitle
+        )}</small></div><ul>${recommendation.advice[key]
           .slice(0, 3)
           .map((item) => `<li>${escapeHtml(item)}</li>`)
           .join("")}</ul></section>`
     )
     .join("");
 
-  target.innerHTML = cards || `<p>${escapeHtml(recommendation.content || "Alohida tavsiya aniqlanmadi.")}</p>`;
+  target.innerHTML = cards || `<p>${escapeHtml(recommendation.content || t("recommendation.noAdvice"))}</p>`;
 }
 
 function chatKey() {
@@ -693,7 +764,17 @@ function restoreChat() {
 function addBubble(content, role) {
   const div = document.createElement("div");
   div.className = `bubble ${role}`;
-  div.textContent = content;
+
+  if (role === "assistant") {
+    // AI javoblari markdown formatida keladi (**qalin**, ro'yxatlar, sarlavhalar
+    // va h.k.) — shuning uchun HTML'ga aylantirib, xavfsizlashtirib chiqariladi.
+    div.classList.add("markdown-content");
+    div.innerHTML = renderMarkdown(content);
+  } else {
+    // Foydalanuvchi xabari oddiy matn sifatida, hech qanday HTML ishlanmasdan chiqadi.
+    div.textContent = content;
+  }
+
   $("chatLog").append(div);
   $("chatLog").scrollTop = $("chatLog").scrollHeight;
 }
@@ -726,7 +807,7 @@ $("chatForm").addEventListener("submit", async (event) => {
 });
 
 function escapeHtml(value) {
-  return value.replace(/[&<>'"]/g, (char) => ({
+  return String(value).replace(/[&<>'"]/g, (char) => ({
     "&": "&amp;",
     "<": "&lt;",
     ">": "&gt;",
@@ -740,14 +821,34 @@ window.addEventListener("resize", () => {
   imageMap.invalidateSize();
 });
 
+/* ---------- Language switching ---------- */
+
+function retranslateDynamic() {
+  updateSummary();
+  setStatus(state.statusKey, state.statusState);
+  renderFieldHeader();
+  renderAdvice(state.recommendation);
+  if (state.fieldId) populateDateSelectors($("dateA").value || null);
+  renderMeta(state.lastMetaInfo);
+  if (state.lastChartSeries) renderChart(state.lastChartSeries);
+}
+
+$("langSwitch").addEventListener("change", (event) => {
+  i18n.setLanguage(event.target.value);
+  retranslateDynamic();
+});
+
+i18n.applyStatic();
+$("langSwitch").value = i18n.current;
+
 (async () => {
   try {
-    setStatus("Server tekshirilmoqda...", "loading");
+    setStatus("nav.statusLoading", "loading");
     await api("/api/health");
-    setStatus("Server ishlayapti", "ok");
+    setStatus("nav.statusOk", "ok");
     await loadFields(true);
   } catch (error) {
-    setStatus("Server bilan aloqa yo'q", "error");
+    setStatus("nav.statusError", "error");
     message($("formMessage"), error.message, true);
   } finally {
     updateSummary();
