@@ -503,19 +503,38 @@ function renderMeta(info) {
   }
 
   const acquisition = info.acquisition;
+  const artifact = info.artifact;
+  const isIndexLayer = METRICS.includes(info.layer);
+  const hasStats = isIndexLayer && artifact.mean_value != null;
+
   const data = [
     [t("imageMeta.layer"), info.layer],
     [t("imageMeta.date"), formatDate(acquisition.acquired_at)],
-    [t("imageMeta.productId"), acquisition.product_id],
-    [t("imageMeta.cloud"), acquisition.cloud_coverage == null ? t("imageMeta.notAvailable") : `${acquisition.cloud_coverage}%`],
-    [t("imageMeta.validPixels"), acquisition.valid_pixel_count ?? t("imageMeta.notAvailable")]
+    [t("imageMeta.cloud"), acquisition.cloud_coverage == null ? t("imageMeta.notAvailable") : `${acquisition.cloud_coverage}%`]
   ];
+
+  if (hasStats) {
+    data.push([t("imageMeta.mean"), artifact.mean_value.toFixed(3)]);
+    data.push([
+      t("imageMeta.range"),
+      artifact.min_value != null && artifact.max_value != null
+        ? `${artifact.min_value.toFixed(3)} … ${artifact.max_value.toFixed(3)}`
+        : t("imageMeta.notAvailable")
+    ]);
+  } else {
+    data.push([
+      t("imageMeta.description"),
+      t(`layerDescriptions.${info.layer}`) === `layerDescriptions.${info.layer}`
+        ? t("imageMeta.notAvailable")
+        : t(`layerDescriptions.${info.layer}`)
+    ]);
+  }
 
   $("imageMeta").innerHTML = data
     .map(([key, value]) => `<div class="datum">${escapeHtml(key)}<strong>${escapeHtml(String(value))}</strong></div>`)
     .join("");
 
-  $("legend").classList.toggle("hidden", !METRICS.includes(info.layer));
+  $("legend").classList.toggle("hidden", !isIndexLayer);
 }
 
 function cycle(selectId, delta) {

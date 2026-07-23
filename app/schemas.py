@@ -96,7 +96,6 @@ class HistoricalMetricsRequest(BaseModel):
             raise ValueError("Boshlanish sanasi bugundan keyin bo'lishi mumkin emas")
         return value
 
-
 class ArtifactOut(BaseModel):
     id: int
     acquisition_id: int
@@ -107,7 +106,11 @@ class ArtifactOut(BaseModel):
     render_version: str
     created_at: str
     image_url: str
-
+    mean_value: float | None = None
+    min_value: float | None = None
+    median_value: float | None = None
+    max_value: float | None = None
+    layer_valid_pixel_count: int | None = None
 
 class AnnualPoint(BaseModel):
     acquisition_id: int

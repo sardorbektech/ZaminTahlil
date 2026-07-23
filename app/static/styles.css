@@ -194,6 +194,11 @@ code,
   padding: 0.7rem 0.2rem 1rem;
 }
 
+.topbar-logo {
+    width: 80px;      /* Kerakli o'lcham */
+    height: 80px;
+    object-fit: contain;
+}
 .topbar-brand {
   display: flex;
   align-items: center;
@@ -689,6 +694,13 @@ legend {
   font-family: var(--font-mono);
   font-weight: 700;
   box-shadow: var(--shadow-sm);
+}
+
+.image-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.55rem;
+  margin-top: 0.85rem;
 }
 
 .label-a {

@@ -5,25 +5,29 @@
 (function () {
   const DICTS = {
     "uz-latn": {
-      meta: { title: "ZaminTahlil — Boshqaruv paneli", description: "ZaminTahlil orqali dala chegaralari, sun'iy yo'ldosh tahlili va AI tavsiyalarini boshqaring." },
+      meta: {
+        title: "ZaminTahlil — Boshqaruv paneli",
+        description:
+          "ZaminTahlil orqali dala chegaralari, sun'iy yo'ldosh tahlili va AI tavsiyalarini boshqaring.",
+      },
       nav: {
         statusLabel: "Tizim holati",
         statusLoading: "Server tekshirilmoqda...",
         statusOk: "Server ishlayapti",
         statusError: "Server bilan aloqa yo'q",
-        langLabel: "Til"
+        langLabel: "Til",
       },
       header: {
         eyebrow: "RAQAMLI DALA MONITORINGI",
         title: "ZaminTahlil",
-        lead: "Dalalarni bitta boshqaruv oynasida kuzating: kontur chizing, Sentinel-2 tasvirlarini taqqoslang, indekslarni tekshiring va amaliy tavsiyalar oling."
+        lead: "Dalalarni bitta boshqaruv oynasida kuzating: kontur chizing, Sentinel-2 tasvirlarini taqqoslang, indekslarni tekshiring va amaliy tavsiyalar oling.",
       },
       stats: {
         fields: "Jami dalalar",
         selectedArea: "Tanlangan maydon",
         latestCapture: "Oxirgi kuzatuv",
         notAnalyzed: "Tahlil qilinmagan",
-        dash: "—"
+        dash: "—",
       },
       story: {
         step: "01",
@@ -37,14 +41,15 @@
         contourLabel: "Kontur bo'yicha",
         contourStart: "Polygon chizishni boshlang",
         contourReady: "Kontur tayyor, formani to'ldiring",
-        contourHint: "Maydon avtomatik hisoblanadi va serverda qayta tekshiriladi."
+        contourHint:
+          "Maydon avtomatik hisoblanadi va serverda qayta tekshiriladi.",
       },
       workspace: {
         step: "02",
         eyebrow: "XARITA WORKSPACE",
         title: "Dala konturi va tanlov",
         badge: "O'zbekiston ko'rinishi",
-        hint: "Yangi dala uchun polygon chizing yoki saqlangan ko'k maydonni tanlang."
+        hint: "Yangi dala uchun polygon chizing yoki saqlangan ko'k maydonni tanlang.",
       },
       composer: {
         step: "03",
@@ -61,12 +66,12 @@
         submit: "Dalani saqlash",
         msgSaving: "Dala saqlanmoqda...",
         msgSaved: "Dala saqlandi: {area} ga",
-        msgNoDraft: "Avval xaritada polygon chizing."
+        msgNoDraft: "Avval xaritada polygon chizing.",
       },
       empty: {
         eyebrow: "TANLOV KUTILMOQDA",
         title: "Tahlil paneli hali ochilmagan",
-        copy: "Saqlangan dala tanlangach, shu sahifada tasvirlarni solishtirish, AI tavsiyalar va yillik indekslar ko'rinadi."
+        copy: "Saqlangan dala tanlangach, shu sahifada tasvirlarni solishtirish, AI tavsiyalar va yillik indekslar ko'rinadi.",
       },
       detail: {
         eyebrow: "TANLANGAN DALA",
@@ -79,9 +84,10 @@
         msgHasAcquisitions: "{count} ta kuzatuv mavjud.",
         msgNoAcquisitions: "Hali tahlil qilinmagan.",
         msgAnalyzing: "Sentinel Hub'dan oxirgi 5 ta tasvir tekshirilmoqda...",
-        msgAnalyzeResult: "{count} ta yangi kuzatuv qayta ishlandi. Tanlangan sana: {date}, bulut: {cloud}.",
+        msgAnalyzeResult:
+          "{count} ta yangi kuzatuv qayta ishlandi. Tanlangan sana: {date}, bulut: {cloud}.",
         cloudNone: "mavjud emas",
-        cloudPct: "{value}%"
+        cloudPct: "{value}%",
       },
       viewer: {
         eyebrow: "SUN'IY YO'LDOSH TASVIRLARI",
@@ -101,15 +107,20 @@
         opacityLabel: "Shaffoflik",
         qaLabel: "QA yoki maska",
         mobileA: "A ni ko'rsatish",
-        mobileB: "B ni ko'rsatish"
+        mobileB: "B ni ko'rsatish",
       },
       imageMeta: {
         layer: "Qatlam",
         date: "Sana",
-        productId: "Product ID",
         cloud: "Bulut",
-        validPixels: "Yaroqli piksel",
-        notAvailable: "Mavjud emas"
+        mean: "O'rtacha qiymat",
+        range: "Min-Max oralig'i",
+        description: "Tavsif",
+        notAvailable: "Mavjud emas",
+      },
+      layerDescriptions: {
+        RGB: "Haqiqiy rangli (RGB) tasvir",
+        QA: "Sifat nazorati (bulut/soya) maskasi",
       },
       recommendation: {
         eyebrow: "AI TAVSIYASI",
@@ -121,7 +132,7 @@
         groupYellowSub: "Nazorat va ehtiyot chorasi",
         groupGreenTitle: "Yaxshi jarayonlar",
         groupGreenSub: "Ijobiy holatlar",
-        noAdvice: "Alohida tavsiya aniqlanmadi."
+        noAdvice: "Alohida tavsiya aniqlanmadi.",
       },
       chat: {
         eyebrow: "SAVOL-JAVOB",
@@ -129,7 +140,7 @@
         inputLabel: "Savolingiz",
         inputPlaceholder: "Masalan: NDVI pasayishi nimani anglatadi?",
         submit: "Savol yuborish",
-        privacy: "Chatning oxirgi xabarlari shu brauzer sessiyasida saqlanadi."
+        privacy: "Chatning oxirgi xabarlari shu brauzer sessiyasida saqlanadi.",
       },
       chart: {
         eyebrow: "YILLIK DINAMIKA",
@@ -141,35 +152,40 @@
         emptyState: "Kuzatuv mavjud emas",
         axisTitle: "Indeks qiymati",
         msgLoading: "{date} sanasidan hozirgacha ma'lumotlar yuklanmoqda...",
-        msgResult: "{found} ta kuzatuv topildi, {processed} tasi yangi qayta ishlandi.",
+        msgResult:
+          "{found} ta kuzatuv topildi, {processed} tasi yangi qayta ishlandi.",
         msgChooseDate: "Boshlanish sanasini tanlang.",
         tooltipNoData: "bulut yoki no-data",
-        tooltipCloud: "bulut {value}%"
+        tooltipCloud: "bulut {value}%",
       },
       units: { ha: "ga" },
-      error: { generic: "Xato ({status})" }
+      error: { generic: "Xato ({status})" },
     },
 
     "uz-cyrl": {
-      meta: { title: "ЗаминТаҳлил — Бошқарув панели", description: "ЗаминТаҳлил орқали дала чегаралари, сунъий йўлдош таҳлили ва АИ тавсияларини бошқаринг." },
+      meta: {
+        title: "ZaminTahlil — Бошқарув панели",
+        description:
+          "ZaminTahlil орқали дала чегаралари, сунъий йўлдош таҳлили ва АИ тавсияларини бошқаринг.",
+      },
       nav: {
         statusLabel: "Тизим ҳолати",
         statusLoading: "Сервер текширилмоқда...",
         statusOk: "Сервер ишлаяпти",
         statusError: "Сервер билан алоқа йўқ",
-        langLabel: "Тил"
+        langLabel: "Тил",
       },
       header: {
         eyebrow: "РАҚАМЛИ ДАЛА МОНИТОРИНГИ",
-        title: "ЗаминТаҳлил",
-        lead: "Далаларни битта бошқарув ойнасида кузатинг: контур чизинг, Sentinel-2 тасвирларини таққосланг, индексларни текширинг ва амалий тавсиялар олинг."
+        title: "ZaminTahlil",
+        lead: "Далаларни битта бошқарув ойнасида кузатинг: контур чизинг, Sentinel-2 тасвирларини таққосланг, индексларни текширинг ва амалий тавсиялар олинг.",
       },
       stats: {
         fields: "Жами далалар",
         selectedArea: "Танланган майдон",
         latestCapture: "Охирги кузатув",
         notAnalyzed: "Таҳлил қилинмаган",
-        dash: "—"
+        dash: "—",
       },
       story: {
         step: "01",
@@ -183,14 +199,15 @@
         contourLabel: "Контур бўйича",
         contourStart: "Полигон чизишни бошланг",
         contourReady: "Контур тайёр, форманни тўлдиринг",
-        contourHint: "Майдон автоматик ҳисобланади ва серверда қайта текширилади."
+        contourHint:
+          "Майдон автоматик ҳисобланади ва серверда қайта текширилади.",
       },
       workspace: {
         step: "02",
         eyebrow: "ХАРИТА ИШ МАЙДОНИ",
         title: "Дала контури ва танлов",
         badge: "Ўзбекистон кўриниши",
-        hint: "Янги дала учун полигон чизинг ёки сақланган кўк майдонни танланг."
+        hint: "Янги дала учун полигон чизинг ёки сақланган кўк майдонни танланг.",
       },
       composer: {
         step: "03",
@@ -207,12 +224,12 @@
         submit: "Далани сақлаш",
         msgSaving: "Дала сақланмоқда...",
         msgSaved: "Дала сақланди: {area} га",
-        msgNoDraft: "Аввал харитада полигон чизинг."
+        msgNoDraft: "Аввал харитада полигон чизинг.",
       },
       empty: {
         eyebrow: "ТАНЛОВ КУТИЛМОҚДА",
         title: "Таҳлил панели ҳали очилмаган",
-        copy: "Сақланган дала танлангач, шу саҳифада тасвирларни солиштириш, АИ тавсиялар ва йиллик индекслар кўринади."
+        copy: "Сақланган дала танлангач, шу саҳифада тасвирларни солиштириш, АИ тавсиялар ва йиллик индекслар кўринади.",
       },
       detail: {
         eyebrow: "ТАНЛАНГАН ДАЛА",
@@ -225,9 +242,10 @@
         msgHasAcquisitions: "{count} та кузатув мавжуд.",
         msgNoAcquisitions: "Ҳали таҳлил қилинмаган.",
         msgAnalyzing: "Sentinel Hub'дан охирги 5 та тасвир текширилмоқда...",
-        msgAnalyzeResult: "{count} та янги кузатув қайта ишланди. Танланган сана: {date}, булут: {cloud}.",
+        msgAnalyzeResult:
+          "{count} та янги кузатув қайта ишланди. Танланган сана: {date}, булут: {cloud}.",
         cloudNone: "мавжуд эмас",
-        cloudPct: "{value}%"
+        cloudPct: "{value}%",
       },
       viewer: {
         eyebrow: "СУНЪИЙ ЙЎЛДОШ ТАСВИРЛАРИ",
@@ -247,15 +265,20 @@
         opacityLabel: "Шаффофлик",
         qaLabel: "QA ёки маска",
         mobileA: "А ни кўрсатиш",
-        mobileB: "Б ни кўрсатиш"
+        mobileB: "Б ни кўрсатиш",
       },
       imageMeta: {
         layer: "Қатлам",
         date: "Сана",
-        productId: "Product ID",
         cloud: "Булут",
-        validPixels: "Яроқли пиксел",
-        notAvailable: "Мавжуд эмас"
+        mean: "Ўртача қиймат",
+        range: "Мин–Макс оралиғи",
+        description: "Тавсиф",
+        notAvailable: "Мавжуд эмас",
+      },
+      layerDescriptions: {
+        RGB: "Ҳақиқий рангли (RGB) тасвир",
+        QA: "Сифат назорати (булут/соя) маскаси",
       },
       recommendation: {
         eyebrow: "АИ ТАВСИЯСИ",
@@ -267,7 +290,7 @@
         groupYellowSub: "Назорат ва эҳтиёт чораси",
         groupGreenTitle: "Яхши жараёнлар",
         groupGreenSub: "Ижобий ҳолатлар",
-        noAdvice: "Алоҳида тавсия аниқланмади."
+        noAdvice: "Алоҳида тавсия аниқланмади.",
       },
       chat: {
         eyebrow: "САВОЛ-ЖАВОБ",
@@ -275,7 +298,7 @@
         inputLabel: "Саволингиз",
         inputPlaceholder: "Масалан: NDVI пасайиши нимани англатади?",
         submit: "Савол юбориш",
-        privacy: "Чатнинг охирги хабарлари шу браузер сессиясида сақланади."
+        privacy: "Чатнинг охирги хабарлари шу браузер сессиясида сақланади.",
       },
       chart: {
         eyebrow: "ЙИЛЛИК ДИНАМИКА",
@@ -287,35 +310,40 @@
         emptyState: "Кузатув мавжуд эмас",
         axisTitle: "Индекс қиймати",
         msgLoading: "{date} санасидан ҳозиргача маълумотлар юкланмоқда...",
-        msgResult: "{found} та кузатув топилди, {processed} таси янги қайта ишланди.",
+        msgResult:
+          "{found} та кузатув топилди, {processed} таси янги қайта ишланди.",
         msgChooseDate: "Бошланиш санасини танланг.",
         tooltipNoData: "булут ёки no-data",
-        tooltipCloud: "булут {value}%"
+        tooltipCloud: "булут {value}%",
       },
       units: { ha: "га" },
-      error: { generic: "Хато ({status})" }
+      error: { generic: "Хато ({status})" },
     },
 
     ru: {
-      meta: { title: "ZaminTahlil — Панель управления", description: "Управляйте границами полей, спутниковым анализом и рекомендациями ИИ через ZaminTahlil." },
+      meta: {
+        title: "ZaminTahlil — Панель управления",
+        description:
+          "Управляйте границами полей, спутниковым анализом и рекомендациями ИИ через ZaminTahlil.",
+      },
       nav: {
         statusLabel: "Статус системы",
         statusLoading: "Проверка сервера...",
         statusOk: "Сервер работает",
         statusError: "Нет связи с сервером",
-        langLabel: "Язык"
+        langLabel: "Язык",
       },
       header: {
         eyebrow: "ЦИФРОВОЙ МОНИТОРИНГ ПОЛЕЙ",
         title: "ZaminTahlil",
-        lead: "Следите за полями в едином окне управления: рисуйте контур, сравнивайте снимки Sentinel-2, проверяйте индексы и получайте практические рекомендации."
+        lead: "Следите за полями в едином окне управления: рисуйте контур, сравнивайте снимки Sentinel-2, проверяйте индексы и получайте практические рекомендации.",
       },
       stats: {
         fields: "Всего полей",
         selectedArea: "Площадь поля",
         latestCapture: "Последний снимок",
         notAnalyzed: "Не анализировано",
-        dash: "—"
+        dash: "—",
       },
       story: {
         step: "01",
@@ -325,18 +353,20 @@
         mapStateLabel: "Статус карты",
         fieldNotSelected: "Поле не выбрано",
         fieldSelected: "Поле выбрано",
-        mapStateHint: "Нажмите на сохранённое поле или нарисуйте новый полигон.",
+        mapStateHint:
+          "Нажмите на сохранённое поле или нарисуйте новый полигон.",
         contourLabel: "По контуру",
         contourStart: "Начните рисовать полигон",
         contourReady: "Контур готов, заполните форму",
-        contourHint: "Площадь рассчитывается автоматически и перепроверяется на сервере."
+        contourHint:
+          "Площадь рассчитывается автоматически и перепроверяется на сервере.",
       },
       workspace: {
         step: "02",
         eyebrow: "РАБОЧАЯ ОБЛАСТЬ КАРТЫ",
         title: "Контур поля и выбор",
         badge: "Вид Узбекистана",
-        hint: "Нарисуйте полигон для нового поля или выберите сохранённое синее поле."
+        hint: "Нарисуйте полигон для нового поля или выберите сохранённое синее поле.",
       },
       composer: {
         step: "03",
@@ -353,12 +383,12 @@
         submit: "Сохранить поле",
         msgSaving: "Поле сохраняется...",
         msgSaved: "Поле сохранено: {area} га",
-        msgNoDraft: "Сначала нарисуйте полигон на карте."
+        msgNoDraft: "Сначала нарисуйте полигон на карте.",
       },
       empty: {
         eyebrow: "ОЖИДАНИЕ ВЫБОРА",
         title: "Панель анализа ещё не открыта",
-        copy: "После выбора сохранённого поля здесь появятся сравнение снимков, рекомендации ИИ и годовые индексы."
+        copy: "После выбора сохранённого поля здесь появятся сравнение снимков, рекомендации ИИ и годовые индексы.",
       },
       detail: {
         eyebrow: "ВЫБРАННОЕ ПОЛЕ",
@@ -371,9 +401,10 @@
         msgHasAcquisitions: "Доступно наблюдений: {count}.",
         msgNoAcquisitions: "Ещё не анализировано.",
         msgAnalyzing: "Проверка последних 5 снимков в Sentinel Hub...",
-        msgAnalyzeResult: "Обработано новых наблюдений: {count}. Выбранная дата: {date}, облачность: {cloud}.",
+        msgAnalyzeResult:
+          "Обработано новых наблюдений: {count}. Выбранная дата: {date}, облачность: {cloud}.",
         cloudNone: "нет данных",
-        cloudPct: "{value}%"
+        cloudPct: "{value}%",
       },
       viewer: {
         eyebrow: "СПУТНИКОВЫЕ СНИМКИ",
@@ -389,19 +420,25 @@
         stateLoading: "Загрузка снимка...",
         stateError: "Ошибка при загрузке снимка",
         stateNoArtifact: "Для этого слоя нет данных",
-        stateFullyCloudy: "Полная облачность: нет пригодных пикселей для индекса",
+        stateFullyCloudy:
+          "Полная облачность: нет пригодных пикселей для индекса",
         opacityLabel: "Прозрачность",
         qaLabel: "QA или маска",
         mobileA: "Показать A",
-        mobileB: "Показать B"
+        mobileB: "Показать B",
       },
       imageMeta: {
         layer: "Слой",
         date: "Дата",
-        productId: "ID продукта",
         cloud: "Облачность",
-        validPixels: "Годных пикселей",
-        notAvailable: "Нет данных"
+        mean: "Среднее значение",
+        range: "Диапазон мин–макс",
+        description: "Описание",
+        notAvailable: "Нет данных",
+      },
+      layerDescriptions: {
+        RGB: "Изображение в естественных цветах (RGB)",
+        QA: "Маска контроля качества (облака/тени)",
       },
       recommendation: {
         eyebrow: "РЕКОМЕНДАЦИЯ ИИ",
@@ -413,7 +450,7 @@
         groupYellowSub: "Наблюдение и меры предосторожности",
         groupGreenTitle: "Хорошие процессы",
         groupGreenSub: "Положительные показатели",
-        noAdvice: "Отдельных рекомендаций не выявлено."
+        noAdvice: "Отдельных рекомендаций не выявлено.",
       },
       chat: {
         eyebrow: "ВОПРОСЫ И ОТВЕТЫ",
@@ -421,7 +458,8 @@
         inputLabel: "Ваш вопрос",
         inputPlaceholder: "Например: что означает снижение NDVI?",
         submit: "Отправить вопрос",
-        privacy: "Последние сообщения чата хранятся только в этой сессии браузера."
+        privacy:
+          "Последние сообщения чата хранятся только в этой сессии браузера.",
       },
       chart: {
         eyebrow: "ГОДОВАЯ ДИНАМИКА",
@@ -433,35 +471,40 @@
         emptyState: "Наблюдений нет",
         axisTitle: "Значение индекса",
         msgLoading: "Загрузка данных с {date} по сегодня...",
-        msgResult: "Найдено наблюдений: {found}, из них новых обработано: {processed}.",
+        msgResult:
+          "Найдено наблюдений: {found}, из них новых обработано: {processed}.",
         msgChooseDate: "Выберите дату начала.",
         tooltipNoData: "облачно или нет данных",
-        tooltipCloud: "облачность {value}%"
+        tooltipCloud: "облачность {value}%",
       },
       units: { ha: "га" },
-      error: { generic: "Ошибка ({status})" }
+      error: { generic: "Ошибка ({status})" },
     },
 
     en: {
-      meta: { title: "ZaminTahlil — Dashboard", description: "Manage field boundaries, satellite analysis and AI recommendations with ZaminTahlil." },
+      meta: {
+        title: "ZaminTahlil — Dashboard",
+        description:
+          "Manage field boundaries, satellite analysis and AI recommendations with ZaminTahlil.",
+      },
       nav: {
         statusLabel: "System status",
         statusLoading: "Checking server...",
         statusOk: "Server is running",
         statusError: "Cannot reach server",
-        langLabel: "Language"
+        langLabel: "Language",
       },
       header: {
         eyebrow: "DIGITAL FIELD MONITORING",
         title: "ZaminTahlil",
-        lead: "Track your fields from a single control panel: draw boundaries, compare Sentinel-2 imagery, check vegetation indices, and get practical recommendations."
+        lead: "Track your fields from a single control panel: draw boundaries, compare Sentinel-2 imagery, check vegetation indices, and get practical recommendations.",
       },
       stats: {
         fields: "Total fields",
         selectedArea: "Selected area",
         latestCapture: "Latest capture",
         notAnalyzed: "Not analyzed yet",
-        dash: "—"
+        dash: "—",
       },
       story: {
         step: "01",
@@ -475,14 +518,15 @@
         contourLabel: "Boundary status",
         contourStart: "Start drawing a polygon",
         contourReady: "Boundary ready, fill in the form",
-        contourHint: "Area is calculated automatically and re-verified on the server."
+        contourHint:
+          "Area is calculated automatically and re-verified on the server.",
       },
       workspace: {
         step: "02",
         eyebrow: "MAP WORKSPACE",
         title: "Field boundary and selection",
         badge: "Uzbekistan view",
-        hint: "Draw a polygon for a new field or select a saved blue field."
+        hint: "Draw a polygon for a new field or select a saved blue field.",
       },
       composer: {
         step: "03",
@@ -499,12 +543,12 @@
         submit: "Save field",
         msgSaving: "Saving field...",
         msgSaved: "Field saved: {area} ha",
-        msgNoDraft: "Draw a polygon on the map first."
+        msgNoDraft: "Draw a polygon on the map first.",
       },
       empty: {
         eyebrow: "AWAITING SELECTION",
         title: "Analysis panel is not open yet",
-        copy: "Once a saved field is selected, imagery comparison, AI recommendations, and yearly indices will appear on this page."
+        copy: "Once a saved field is selected, imagery comparison, AI recommendations, and yearly indices will appear on this page.",
       },
       detail: {
         eyebrow: "SELECTED FIELD",
@@ -517,9 +561,10 @@
         msgHasAcquisitions: "{count} observation(s) available.",
         msgNoAcquisitions: "Not analyzed yet.",
         msgAnalyzing: "Checking the last 5 images from Sentinel Hub...",
-        msgAnalyzeResult: "{count} new observation(s) processed. Selected date: {date}, cloud cover: {cloud}.",
+        msgAnalyzeResult:
+          "{count} new observation(s) processed. Selected date: {date}, cloud cover: {cloud}.",
         cloudNone: "not available",
-        cloudPct: "{value}%"
+        cloudPct: "{value}%",
       },
       viewer: {
         eyebrow: "SATELLITE IMAGERY",
@@ -539,15 +584,20 @@
         opacityLabel: "Opacity",
         qaLabel: "QA / mask",
         mobileA: "Show A",
-        mobileB: "Show B"
+        mobileB: "Show B",
       },
       imageMeta: {
         layer: "Layer",
         date: "Date",
-        productId: "Product ID",
         cloud: "Cloud cover",
-        validPixels: "Valid pixels",
-        notAvailable: "Not available"
+        mean: "Mean value",
+        range: "Min-max range",
+        description: "Description",
+        notAvailable: "Not available",
+      },
+      layerDescriptions: {
+        RGB: "True-color (RGB) image",
+        QA: "Quality/cloud mask layer",
       },
       recommendation: {
         eyebrow: "AI RECOMMENDATION",
@@ -559,7 +609,7 @@
         groupYellowSub: "Watch and take precautions",
         groupGreenTitle: "Healthy processes",
         groupGreenSub: "Positive conditions",
-        noAdvice: "No specific recommendation identified."
+        noAdvice: "No specific recommendation identified.",
       },
       chat: {
         eyebrow: "Q&A",
@@ -567,7 +617,8 @@
         inputLabel: "Your question",
         inputPlaceholder: "e.g. What does a drop in NDVI mean?",
         submit: "Send question",
-        privacy: "Recent chat messages are stored only in this browser session."
+        privacy:
+          "Recent chat messages are stored only in this browser session.",
       },
       chart: {
         eyebrow: "YEARLY TREND",
@@ -582,32 +633,37 @@
         msgResult: "{found} observation(s) found, {processed} newly processed.",
         msgChooseDate: "Choose a start date.",
         tooltipNoData: "cloudy or no data",
-        tooltipCloud: "cloud {value}%"
+        tooltipCloud: "cloud {value}%",
       },
       units: { ha: "ha" },
-      error: { generic: "Error ({status})" }
-    }
+      error: { generic: "Error ({status})" },
+    },
   };
 
   const LOCALE_MAP = {
     "uz-latn": "uz-Latn",
     "uz-cyrl": "uz-Cyrl",
     ru: "ru-RU",
-    en: "en-US"
+    en: "en-US",
   };
 
   const LANG_NAMES = {
     "uz-latn": "O'zbekcha (lotin)",
     "uz-cyrl": "Ўзбекча (кирилл)",
     ru: "Русский",
-    en: "English"
+    en: "English",
   };
 
   let current = "uz-latn";
   const listeners = [];
 
   function getPath(obj, path) {
-    return path.split(".").reduce((acc, key) => (acc && acc[key] !== undefined ? acc[key] : undefined), obj);
+    return path
+      .split(".")
+      .reduce(
+        (acc, key) => (acc && acc[key] !== undefined ? acc[key] : undefined),
+        obj,
+      );
   }
 
   function t(key, vars) {
@@ -627,7 +683,10 @@
       element.textContent = t(element.getAttribute("data-i18n"));
     });
     root.querySelectorAll("[data-i18n-placeholder]").forEach((element) => {
-      element.setAttribute("placeholder", t(element.getAttribute("data-i18n-placeholder")));
+      element.setAttribute(
+        "placeholder",
+        t(element.getAttribute("data-i18n-placeholder")),
+      );
     });
     root.querySelectorAll("[data-i18n-title]").forEach((element) => {
       element.setAttribute("title", t(element.getAttribute("data-i18n-title")));
@@ -635,7 +694,8 @@
     document.documentElement.lang = current.startsWith("uz") ? "uz" : current;
     document.title = t("meta.title");
     const descriptionTag = document.querySelector('meta[name="description"]');
-    if (descriptionTag) descriptionTag.setAttribute("content", t("meta.description"));
+    if (descriptionTag)
+      descriptionTag.setAttribute("content", t("meta.description"));
   }
 
   function setLanguage(lang) {
@@ -662,6 +722,6 @@
     get current() {
       return current;
     },
-    languages: LANG_NAMES
+    languages: LANG_NAMES,
   };
 })();

@@ -407,3 +407,18 @@ class Repository:
         # Faqat rasm artefaktlari (PNG) o'chiriladi; kuzatuv va index_values
         # yozuvlari (statistikalar bilan) sana-oralig'i grafiklari uchun saqlanadi.
         return [str(row["relative_path"]) for row in artifact_rows]
+        def list_artifacts(self, field_id: int, acquisition_id: int) -> list[dict[str, Any]]:
+            with self.database.connect() as connection:
+                rows = connection.execute(
+                    """SELECT artifacts.*, index_values.mean_value, index_values.min_value,
+                    index_values.median_value, index_values.max_value,
+                    index_values.valid_pixel_count AS layer_valid_pixel_count
+                    FROM artifacts
+                    JOIN acquisitions ON acquisitions.id = artifacts.acquisition_id
+                    LEFT JOIN index_values ON index_values.acquisition_id = artifacts.acquisition_id
+                        AND index_values.index_name = artifacts.layer_name
+                    WHERE artifacts.acquisition_id = ? AND acquisitions.field_id = ?
+                    AND artifacts.render_version = ?""",
+                    (acquisition_id, field_id, RENDER_VERSION),
+                ).fetchall()
+            return [decode_json_columns(row_to_dict(row), "bbox_json") for row in rows]
