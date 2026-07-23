@@ -72,13 +72,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(title="ZaminTahlil API", version="0.1.0", lifespan=lifespan)
 
-# app.add_middleware(
-#     CORSMiddleware,
-#     allow_origins=["https://express-html-builder.lovable.app/"],
-#     allow_credentials=True,
-#     allow_methods=["*"],
-#     allow_headers=["*"],
-# )
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 async def get_repository(request: Request) -> Repository:
