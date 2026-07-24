@@ -12,7 +12,7 @@ from openai import (
     RateLimitError,
 )
 
-from app.constants import AI_SYSTEM_PROMPT
+from app.constants import AI_CHAT_SYSTEM_PROMPT, AI_RECOMMENDATION_SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
 
@@ -52,10 +52,12 @@ class AIClient:
         self.primary_model = primary_model
         self.fallback_model = fallback_model
 
-    async def _generate(self, model: str, input_data: Any) -> AIResult:
+    async def _generate(
+        self, model: str, input_data: Any, instructions: str
+    ) -> AIResult:
         response = await self.client.responses.create(
             model=model,
-            instructions=AI_SYSTEM_PROMPT,
+            instructions=instructions,
             input=input_data,
         )
         content = response.output_text.strip()
@@ -64,10 +66,12 @@ class AIClient:
         logger.info("AI response generated model=%s", model)
         return AIResult(content, model)
 
-    async def _generate_advice(self, model: str, input_data: Any) -> AIResult:
+    async def _generate_advice(
+        self, model: str, input_data: Any, instructions: str
+    ) -> AIResult:
         response = await self.client.responses.create(
             model=model,
-            instructions=AI_SYSTEM_PROMPT,
+            instructions=instructions,
             input=input_data,
             text=cast(
                 Any,
@@ -117,18 +121,23 @@ class AIClient:
         return AIResult(content, model, advice)
 
     async def generate_with_fallback(
-        self, input_data: Any, *, structured_advice: bool = False
+        self, input_data: Any, *, instructions: str, structured_advice: bool = False
     ) -> AIResult:
-        retryable = (APIConnectionError, APITimeoutError, RateLimitError, InternalServerError)
+        retryable = (
+            APIConnectionError,
+            APITimeoutError,
+            RateLimitError,
+            InternalServerError,
+        )
         generate = self._generate_advice if structured_advice else self._generate
         for attempt in range(2):
             try:
-                return await generate(self.primary_model, input_data)
+                return await generate(self.primary_model, input_data, instructions)
             except retryable:
                 if attempt == 0:
                     await asyncio.sleep(0.5)
         try:
-            return await generate(self.fallback_model, input_data)
+            return await generate(self.fallback_model, input_data, instructions)
         except Exception as exc:
             raise AIError("AI tavsiyasi hozir yaratilmadi") from exc
 
@@ -155,7 +164,9 @@ class AIClient:
             "last_five_observations_for_important_metrics": history,
         }
         return await self.generate_with_fallback(
-            json.dumps(allowed_context, ensure_ascii=False), structured_advice=True
+            json.dumps(allowed_context, ensure_ascii=False),
+            instructions=AI_RECOMMENDATION_SYSTEM_PROMPT,
+            structured_advice=True,
         )
 
     async def chat(
@@ -181,4 +192,8 @@ class AIClient:
             }
         ]
         inputs.extend(messages)
-        return await self.generate_with_fallback(inputs)
+        return await self.generate_with_fallback(
+            inputs,
+            instructions=AI_CHAT_SYSTEM_PROMPT,
+            structured_advice=False,
+        )
