@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import date
@@ -8,10 +9,13 @@ from app.constants import INDEX_NAMES, RENDER_VERSION
 from app.indices import IndexStats, calculate_indices, calculate_stats
 from app.rendering import ArtifactWriter, render_heatmap, render_qa, render_rgb
 from app.repository import Repository
-from app.sentinel import CatalogItem, SentinelHubClient, valid_pixel_mask
+from app.sentinel import CatalogItem, RasterData, SentinelHubClient, valid_pixel_mask
 from app.timeutils import iso_utc
 
 logger = logging.getLogger(__name__)
+
+# Sentinel Hub rate limit'ga rioya etgan holda parallel yuklash.
+RASTER_FETCH_CONCURRENCY = 3
 
 
 def _round2(value: float | None) -> float | None:
@@ -58,6 +62,7 @@ class AnalysisService:
         item: CatalogItem,
         acquisition: dict[str, Any],
         *,
+        raster: RasterData,
         render_artifacts: bool = True,
     ) -> None:
         acquisition_id = int(acquisition["id"])
@@ -68,7 +73,6 @@ class AnalysisService:
             item.product_id,
         )
         try:
-            raster = await self.sentinel.raster(field["geometry"], item.acquired_at)
             valid = valid_pixel_mask(raster)
             index_values = calculate_indices(raster.bands, valid)
             created_at = iso_utc()
@@ -119,6 +123,25 @@ class AnalysisService:
             logger.exception("Acquisition processing failed acquisition_id=%s", acquisition_id)
             raise
 
+    async def _fetch_rasters(
+        self, field: dict[str, Any], items: list[CatalogItem]
+    ) -> list[RasterData | Exception]:
+        """Katalog elementlari rasterlarini cheklangan parallelikda yuklash.
+
+        Xatolar istisno obyekti sifatida qaytariladi — chaqiruvchi ularni
+        ketma-ket qayta ishlash bosqichida ko'taradi.
+        """
+        semaphore = asyncio.Semaphore(RASTER_FETCH_CONCURRENCY)
+
+        async def fetch(item: CatalogItem) -> RasterData | Exception:
+            async with semaphore:
+                try:
+                    return await self.sentinel.raster(field["geometry"], item.acquired_at)
+                except Exception as exc:  # noqa: BLE001 - xato natija sifatida uzatiladi
+                    return exc
+
+        return list(await asyncio.gather(*(fetch(item) for item in items)))
+
     def _record_stats(self, record: dict[str, Any]) -> IndexStats:
         """Bazadagi statistikani o'qish; migratsiyadan oldingi yozuvlar uchun
         .npy fayldan hisoblab olishga qaytish (fallback)."""
@@ -162,6 +185,7 @@ class AnalysisService:
         field = self.repository.get_field(field_id)
         catalog_items = await self.sentinel.catalog(field["geometry"])
         processed: list[dict[str, Any]] = []
+        pending: list[tuple[CatalogItem, dict[str, Any]]] = []
         for item in catalog_items:
             acquisition, created = self.repository.create_acquisition_if_new(
                 field_id,
@@ -177,8 +201,19 @@ class AnalysisService:
                 or not self.repository.has_complete_index_values(int(acquisition["id"]))
                 or not self.repository.has_complete_artifacts(int(acquisition["id"]))
             ):
-                await self._process_item(field, item, acquisition)
-                processed.append(self.repository.get_acquisition(field_id, int(acquisition["id"])))
+                pending.append((item, acquisition))
+        rasters = await self._fetch_rasters(field, [item for item, _ in pending])
+        for (item, acquisition), raster in zip(pending, rasters, strict=True):
+            if isinstance(raster, Exception):
+                self.repository.mark_processing_failure(int(acquisition["id"]), str(raster))
+                logger.error(
+                    "Acquisition raster fetch failed acquisition_id=%s: %s",
+                    acquisition["id"],
+                    raster,
+                )
+                raise raster
+            await self._process_item(field, item, acquisition, raster=raster)
+            processed.append(self.repository.get_acquisition(field_id, int(acquisition["id"])))
         removed_paths = self.repository.prune_old_image_data(field_id)
         for relative_path in removed_paths:
             self.artifacts.delete_relative(relative_path)
@@ -231,6 +266,7 @@ class AnalysisService:
         field = self.repository.get_field(field_id)
         catalog_items = await self.sentinel.catalog_range(field["geometry"], from_date)
         processed_count = 0
+        pending: list[tuple[CatalogItem, dict[str, Any]]] = []
         for item in catalog_items:
             acquisition, created = self.repository.create_acquisition_if_new(
                 field_id,
@@ -245,8 +281,19 @@ class AnalysisService:
                 or acquisition["processed_at"] is None
                 or not self.repository.has_complete_index_values(int(acquisition["id"]))
             ):
-                await self._process_item(field, item, acquisition, render_artifacts=False)
-                processed_count += 1
+                pending.append((item, acquisition))
+        rasters = await self._fetch_rasters(field, [item for item, _ in pending])
+        for (item, acquisition), raster in zip(pending, rasters, strict=True):
+            if isinstance(raster, Exception):
+                self.repository.mark_processing_failure(int(acquisition["id"]), str(raster))
+                logger.error(
+                    "Acquisition raster fetch failed acquisition_id=%s: %s",
+                    acquisition["id"],
+                    raster,
+                )
+                raise raster
+            await self._process_item(field, item, acquisition, raster=raster, render_artifacts=False)
+            processed_count += 1
         logger.info(
             "Historical metric load completed field_id=%s found=%d processed=%d",
             field_id,

@@ -6,11 +6,13 @@ This file helps Autohand understand how to work with this project.
 
 - **Language**: Python
 - **Package Manager**: pip
+- **Runtime mode**: `APP_ENV` in `.env` — default `demo`; `prod` disables API docs (`/docs`, `/redoc`, `/openapi.json`), wildcard CORS (requires explicit `CORS_ORIGINS`), and enables log masking (see README).
 
 ## Commands
 
 - **Install**: `pip install -r requirements.txt`
-- **Run**: `python main.py`
+- **Run**: `uvicorn app.main:app --reload`
+- **Test**: `venv\\Scripts\\python.exe -m pytest -q`
 
 ## Instruction Sources
 
@@ -27,6 +29,13 @@ This file helps Autohand understand how to work with this project.
 - Use meaningful variable and function names
 - Add comments for complex logic
 - Keep functions focused and small
+
+## OpenCode Setup
+
+- **Config**: `.opencode/opencode.json`
+- **Primary model (commander)**: `openrouter/moonshotai/kimi-k3` — plans, delegates, reviews.
+- **Subagent models (workers)**: `openrouter/z-ai/glm-5.2` — `general` and `explore` subagents execute the hands-on work.
+- **Orchestration rules**: `.opencode/orchestration.md` (loaded via `instructions` in the config).
 
 ## Constraints
 

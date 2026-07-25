@@ -13,6 +13,7 @@ from openai import (
 )
 
 from app.constants import AI_CHAT_SYSTEM_PROMPT, AI_RECOMMENDATION_SYSTEM_PROMPT
+from app.language import LANGUAGE_NAMES, SUPPORTED_LANGUAGES, detect_language
 
 logger = logging.getLogger(__name__)
 
@@ -174,6 +175,8 @@ class AIClient:
         field: dict[str, Any],
         recommendation: dict[str, Any],
         messages: list[dict[str, str]],
+        *,
+        language: str | None = None,
     ) -> AIResult:
         context = {
             "current_recommendation": recommendation["content"],
@@ -192,8 +195,27 @@ class AIClient:
             }
         ]
         inputs.extend(messages)
+
+        # Javob tili ustuvorligi: matnda aniq so'ralgan til (LLM ko'rsatmasi orqali)
+        # > avtomatik aniqlangan matn tili > frontend tili.
+        last_user_text = next(
+            (m["content"] for m in reversed(messages) if m.get("role") == "user"),
+            "",
+        )
+        detected = detect_language(last_user_text) if last_user_text else None
+        target = detected or language
+        if target in SUPPORTED_LANGUAGES:
+            instructions = AI_CHAT_SYSTEM_PROMPT + (
+                f"\n\nJavob tili: {LANGUAGE_NAMES[target]} tili. "
+                "Javobni aynan shu tilda yozing. "
+                "Faqat foydalanuvchi oxirgi xabarida javob tilini aniq boshqacha "
+                "so'ragan bo'lsa, so'ralgan tilda javob bering."
+            )
+        else:
+            instructions = AI_CHAT_SYSTEM_PROMPT
+
         return await self.generate_with_fallback(
             inputs,
-            instructions=AI_CHAT_SYSTEM_PROMPT,
+            instructions=instructions,
             structured_advice=False,
         )

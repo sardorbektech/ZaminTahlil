@@ -3,8 +3,9 @@ import hashlib
 import io
 import json
 import logging
+import time
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time as dt_time, timedelta
 from typing import Any, cast
 
 import httpx
@@ -21,6 +22,11 @@ REFLECTANCE_BANDS = ("B02", "B03", "B04", "B05", "B08", "B8A", "B11")
 
 
 class SentinelError(RuntimeError):
+    pass
+
+
+class SentinelAuthError(SentinelError):
+    """Sentinel Hub autentifikatsiya xatosi (HTTP 401)."""
     pass
 
 
@@ -81,18 +87,6 @@ def _web_mercator_polygon(geometry: dict[str, Any]) -> dict[str, Any]:
     return {"type": "Polygon", "coordinates": coordinates}
 
 
-# class SentinelHubClient:
-#     token_url = "https://services.sentinel-hub.com/auth/realms/main/protocol/openid-connect/token"
-#     catalog_url = "https://services.sentinel-hub.com/api/v1/catalog/1.0.0/search"
-#     process_url = "https://services.sentinel-hub.com/api/v1/process"
-
-#     def __init__(self, client_id: str, client_secret: str, *, timeout: float = 45.0) -> None:
-#         self.client_id = client_id
-#         self.client_secret = client_secret
-#         self.timeout = timeout
-#         self._access_token: str | None = None
-
-
 class SentinelHubClient:
     # CDSE (Copernicus Data Space Ecosystem) manzillari — 2-kodda ishlatilgan
     # va tasdiqlangan konfiguratsiyaga mos.
@@ -109,12 +103,21 @@ class SentinelHubClient:
         *,
         base_url: str = "https://sh.dataspace.copernicus.eu",
         token_url: str | None = None,
+        proxy: str | None = None,
         timeout: float = 45.0,
     ) -> None:
         self.client_id = client_id
         self.client_secret = client_secret
         self.timeout = timeout
+        # CDSE identity hosti (identity.dataspace.copernicus.eu) ba'zi tarmoqlarda
+        # bloklanganda so'rovlarni HTTP proksi orqali yo'naltirish uchun.
+        # Bo'sh string None ga tenglashtiriladi — httpx bo'sh proxy URL ni
+        # "Unknown scheme" xatosi bilan rad etadi.
+        self.proxy = proxy or None
         self._access_token: str | None = None
+        self._client: httpx.AsyncClient | None = None
+        self._token_expires_at: float = 0.0
+        self._token_lock = asyncio.Lock()
         # Konfiguratsiya moslashuvchan bo'lishi uchun instance darajasida
         # override qilish imkoniyati (class atributlari fallback bo'lib qoladi).
         self.base_url = base_url.rstrip("/")
@@ -122,15 +125,36 @@ class SentinelHubClient:
         self.catalog_url = f"{self.base_url}/api/v1/catalog/1.0.0/search"
         self.process_url = f"{self.base_url}/api/v1/process"
 
+    def _get_client(self) -> httpx.AsyncClient:
+        """Barcha so'rovlar uchun qayta ishlatiladigan HTTP klient.
+
+        Har so'rovda yangi AsyncClient ochish har safar TCP/TLS handshake
+        talab qiladi; bitta klient keep-alive orqali ulanishni qayta ishlatadi.
+        """
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(timeout=self.timeout, proxy=self.proxy)
+        return self._client
+
+    async def aclose(self) -> None:
+        """Ichki HTTP klientni yopish (ilova to'xtatilganda chaqiriladi)."""
+        if self._client is not None:
+            await self._client.aclose()
+            self._client = None
+
     async def _request(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
         last_error: Exception | None = None
+        client = self._get_client()
         for attempt in range(3):
             try:
-                async with httpx.AsyncClient(timeout=self.timeout) as client:
-                    response = await client.request(method, url, **kwargs)
+                response = await client.request(method, url, **kwargs)
                 if response.status_code in {429, 500, 502, 503, 504} and attempt < 2:
                     await asyncio.sleep(0.5 * (2**attempt))
                     continue
+                if response.status_code == 401:
+                    # 401 ni qayta urinib bo'lmaydi — token yangilash yuqori darajada.
+                    raise SentinelAuthError(
+                        f"Sentinel Hub autentifikatsiya xatosi (401): {response.text[:500]}"
+                    )
                 if response.status_code >= 400:
                     logger.warning(
                         "Sentinel Hub error status=%d url=%s body=%s",
@@ -140,32 +164,58 @@ class SentinelHubClient:
                     )
                 response.raise_for_status()
                 return response
+            except SentinelAuthError:
+                raise
             except (httpx.TimeoutException, httpx.NetworkError, httpx.HTTPStatusError) as exc:
                 last_error = exc
                 if attempt < 2:
                     await asyncio.sleep(0.5 * (2**attempt))
-        raise SentinelError("Sentinel Hub so'rovi bajarilmadi") from last_error
+        raise SentinelError(f"Sentinel Hub so'rovi bajarilmadi: {last_error!r}") from last_error
 
     async def _token(self) -> str:
-        if self._access_token:
+        # Fast-path: tokenni keshdan qaytarish.
+        if self._access_token and time.time() < self._token_expires_at:
             return self._access_token
-        response = await self._request(
-            "POST",
-            self.token_url,
-            data={
-                "grant_type": "client_credentials",
-                "client_id": self.client_id,
-                "client_secret": self.client_secret,
-            },
-        )
-        token = response.json().get("access_token")
-        if not isinstance(token, str) or not token:
-            raise SentinelError("Sentinel Hub access token qaytarmadi")
-        self._access_token = token
-        return token
+        async with self._token_lock:
+            # Lock ichida qayta tekshirish — parallel chaqiruvchilar bir token
+            # uchun bir nechta so'rov yuborishining oldini olish.
+            if self._access_token and time.time() < self._token_expires_at:
+                return self._access_token
+            response = await self._request(
+                "POST",
+                self.token_url,
+                data={
+                    "grant_type": "client_credentials",
+                    "client_id": self.client_id,
+                    "client_secret": self.client_secret,
+                },
+            )
+            payload = response.json()
+            token = payload.get("access_token")
+            if not isinstance(token, str) or not token:
+                raise SentinelError("Sentinel Hub access token qaytarmadi")
+            expires_in = payload.get("expires_in")
+            if not isinstance(expires_in, int | float):
+                expires_in = 3600
+            # 60 soniya zaxira — token muddati tugashidan oldin yangilaymiz.
+            self._token_expires_at = time.time() + float(expires_in) - 60
+            self._access_token = token
+            return token
+
+    async def _authorized_request(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
+        """Bearer token bilan so'rov; 401 bo'lsa tokenni bir marta yangilab qaytaradi."""
+        token = await self._token()
+        headers = {"Authorization": f"Bearer {token}"}
+        try:
+            return await self._request(method, url, headers=headers, **kwargs)
+        except SentinelAuthError:
+            self._access_token = None
+            self._token_expires_at = 0.0
+            token = await self._token()
+            headers = {"Authorization": f"Bearer {token}"}
+            return await self._request(method, url, headers=headers, **kwargs)
 
     async def catalog(self, geometry: dict[str, Any]) -> list[CatalogItem]:
-        token = await self._token()
         now = datetime.now(UTC).isoformat()
         payload: dict[str, Any] = {
             "collections": ["sentinel-2-l2a"],
@@ -177,9 +227,7 @@ class SentinelHubClient:
             "fields": {"include": ["id", "geometry", "properties"], "exclude": []},
         }
         logger.info("Sentinel catalog latest request limit=%d", MAX_STORED_ACQUISITIONS)
-        response = await self._request(
-            "POST", self.catalog_url, json=payload, headers={"Authorization": f"Bearer {token}"}
-        )
+        response = await self._authorized_request("POST", self.catalog_url, json=payload)
         found: list[CatalogItem] = []
         for feature in response.json().get("features", []):
             properties = feature.get("properties", {})
@@ -242,8 +290,7 @@ class SentinelHubClient:
 
     async def catalog_range(self, geometry: dict[str, Any], from_date: date) -> list[CatalogItem]:
         """Return every real acquisition from the requested UTC date through now."""
-        token = await self._token()
-        started_at = datetime.combine(from_date, time.min, tzinfo=UTC).isoformat()
+        started_at = datetime.combine(from_date, dt_time.min, tzinfo=UTC).isoformat()
         ended_at = datetime.now(UTC).isoformat()
         request_payload: dict[str, Any] = {
             "collections": ["sentinel-2-l2a"],
@@ -257,11 +304,8 @@ class SentinelHubClient:
         found: dict[tuple[str, str], CatalogItem] = {}
         seen_tokens: set[str] = set()
         while True:
-            response = await self._request(
-                "POST",
-                self.catalog_url,
-                json=request_payload,
-                headers={"Authorization": f"Bearer {token}"},
+            response = await self._authorized_request(
+                "POST", self.catalog_url, json=request_payload
             )
             body = response.json()
             for item in self._catalog_items(body):
@@ -289,7 +333,6 @@ class SentinelHubClient:
         *,
         resampling: str,
     ) -> bytes:
-        token = await self._token()
         processing_geometry = _web_mercator_polygon(geometry)
         request = {
             "input": {
@@ -315,12 +358,17 @@ class SentinelHubClient:
             },
             "evalscript": evalscript,
         }
-        response = await self._request(
-            "POST", self.process_url, json=request, headers={"Authorization": f"Bearer {token}"}
-        )
+        response = await self._authorized_request("POST", self.process_url, json=request)
         return response.content
 
     async def raster(self, geometry: dict[str, Any], acquired_at: str) -> RasterData:
+        # Eslatma: reflektans va maska alohida so'rovlarda olinadi. Bitta
+        # so'rovga birlashtirish sinovdan o'tmadi: CDSE da SCL bandi
+        # units="REFLECTANCE" ni qo'llamaydi (faqat DN), ikki input obyektli
+        # variant esa ikki dataset talab qiladi va bunda API bo'sh (NaN)
+        # raster qaytardi. Shu sababli tasdiqlangan ikki so'rovli sxema
+        # saqlanadi — tezlik token keshi, keep-alive klient va parallel
+        # yuklash orqali ta'minlanadi.
         reflectance_script = """//VERSION=3
 function setup() {
   return { input: [{

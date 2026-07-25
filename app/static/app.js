@@ -510,7 +510,16 @@ function renderMeta(info) {
   const data = [
     [t("imageMeta.layer"), info.layer],
     [t("imageMeta.date"), formatDate(acquisition.acquired_at)],
-    [t("imageMeta.cloud"), acquisition.cloud_coverage == null ? t("imageMeta.notAvailable") : `${acquisition.cloud_coverage}%`]
+    [t("imageMeta.cloud"), acquisition.cloud_coverage == null ? t("imageMeta.notAvailable") : `${acquisition.cloud_coverage}%`],
+    [t("imageMeta.productId"), acquisition.product_id],
+    [
+      t("imageMeta.validPixels"),
+      acquisition.valid_pixel_count == null
+        ? t("imageMeta.notAvailable")
+        : Number(acquisition.valid_pixel_count).toLocaleString(i18n.getLocale())
+    ],
+    [t("imageMeta.processedAt"), formatDate(acquisition.processed_at)],
+    [t("imageMeta.fullyCloudy"), acquisition.fully_cloudy ? t("imageMeta.yes") : t("imageMeta.no")]
   ];
 
   if (hasStats) {
@@ -521,6 +530,16 @@ function renderMeta(info) {
         ? `${artifact.min_value.toFixed(3)} … ${artifact.max_value.toFixed(3)}`
         : t("imageMeta.notAvailable")
     ]);
+    data.push([
+      t("imageMeta.median"),
+      artifact.median_value == null ? t("imageMeta.notAvailable") : artifact.median_value.toFixed(3)
+    ]);
+    data.push([
+      t("imageMeta.layerValidPixels"),
+      artifact.layer_valid_pixel_count == null
+        ? t("imageMeta.notAvailable")
+        : Number(artifact.layer_valid_pixel_count).toLocaleString(i18n.getLocale())
+    ]);
   } else {
     data.push([
       t("imageMeta.description"),
@@ -530,8 +549,15 @@ function renderMeta(info) {
     ]);
   }
 
+  data.push([t("imageMeta.dimensions"), `${artifact.width}×${artifact.height} px`]);
+  data.push([t("imageMeta.renderVersion"), artifact.render_version]);
+
+  if (acquisition.processing_error) {
+    data.push([t("imageMeta.processingError"), acquisition.processing_error, "wide error"]);
+  }
+
   $("imageMeta").innerHTML = data
-    .map(([key, value]) => `<div class="datum">${escapeHtml(key)}<strong>${escapeHtml(String(value))}</strong></div>`)
+    .map(([key, value, extra]) => `<div class="datum${extra ? " " + extra : ""}">${escapeHtml(key)}<strong>${escapeHtml(String(value))}</strong></div>`)
     .join("");
 
   $("legend").classList.toggle("hidden", !isIndexLayer);
@@ -814,7 +840,7 @@ $("chatForm").addEventListener("submit", async (event) => {
   try {
     const result = await api(`/api/fields/${state.fieldId}/chat`, {
       method: "POST",
-      body: JSON.stringify({ messages })
+      body: JSON.stringify({ messages, language: i18n.current })
     });
 
     addBubble(result.answer, "assistant");

@@ -151,6 +151,9 @@ class ChatMessage(BaseModel):
 
 class ChatRequest(BaseModel):
     messages: list[ChatMessage] = Field(min_length=1, max_length=MAX_CHAT_MESSAGES)
+    # Frontend tanlagan til — ixtiyoriy. Faqat matn tilini avtomatik aniqlab
+    # bo'lmagandagina javob tili sifatida ishlatiladi.
+    language: Literal["uz-latn", "uz-cyrl", "ru", "en"] | None = None
 
 
 class ChatResponse(BaseModel):

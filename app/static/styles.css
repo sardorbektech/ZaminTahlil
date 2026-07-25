@@ -740,12 +740,13 @@ legend {
 
 .image-meta {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 0.55rem;
   margin-top: 0.85rem;
 }
 
 .datum {
+  min-width: 0;
   padding: 0.7rem 0.75rem;
   border-radius: var(--radius-sm);
   font-size: 0.72rem;
@@ -759,6 +760,16 @@ legend {
   font-family: var(--font-mono);
   font-size: 0.88rem;
   font-weight: 600;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.image-meta .datum.wide {
+  grid-column: 1 / -1;
+}
+
+.image-meta .datum.error strong {
+  color: var(--red);
 }
 
 .legend {

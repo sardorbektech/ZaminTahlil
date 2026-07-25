@@ -10,10 +10,9 @@ dist/
 tests/
 data/*.sqlite3
 *.egg-info/
-.agents/
-.claude/
-.codex/
 .mypy_cache/
 .pytest_cache/
 .ruff_cache/
 prompt.md
+.opencode/
+pyproject.toml
