@@ -858,7 +858,7 @@ legend {
 }
 
 .bubble {
-  max-width: 46rem;
+  /* max-width: 46rem; */
   padding: 0.7rem 0.82rem;
   border-radius: var(--radius-md);
   background: var(--surface-muted);

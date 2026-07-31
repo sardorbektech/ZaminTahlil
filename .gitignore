@@ -16,3 +16,4 @@ data/*.sqlite3
 prompt.md
 .opencode/
 pyproject.toml
+AGENTS.md
