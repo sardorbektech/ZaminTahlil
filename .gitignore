@@ -7,12 +7,10 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 dist/
-tests/
+data/artifacts/
 data/*.sqlite3
+data/*.sqlite3*
 *.egg-info/
-.mypy_cache/
-.pytest_cache/
-.ruff_cache/
 prompt.md
 .opencode/
 pyproject.toml

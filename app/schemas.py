@@ -33,6 +33,7 @@ class FieldCreate(BaseModel):
 
 class FieldOut(BaseModel):
     id: int
+    public_id: str | None = None
     geometry: dict[str, Any]
     area_hectares: float
     crop_name: str
@@ -40,6 +41,7 @@ class FieldOut(BaseModel):
     growth_stage: str
     created_at: str
     updated_at: str
+
 
 
 class AcquisitionOut(BaseModel):
@@ -96,6 +98,7 @@ class HistoricalMetricsRequest(BaseModel):
             raise ValueError("Boshlanish sanasi bugundan keyin bo'lishi mumkin emas")
         return value
 
+
 class ArtifactOut(BaseModel):
     id: int
     acquisition_id: int
@@ -111,6 +114,7 @@ class ArtifactOut(BaseModel):
     median_value: float | None = None
     max_value: float | None = None
     layer_valid_pixel_count: int | None = None
+
 
 class AnnualPoint(BaseModel):
     acquisition_id: int
@@ -139,6 +143,30 @@ class HistoricalMetricsResponse(BaseModel):
     series: HistoricalSeries
 
 
+# --- RAG Schemas ---
+class RAGIngestRequest(BaseModel):
+    pdf_path: str = Field(min_length=1)
+    document_name: str | None = None
+
+
+class RAGDocumentOut(BaseModel):
+    id: int
+    name: str
+    file_path: str
+    file_hash: str
+    total_pages: int
+    chunk_count: int
+    created_at: str
+
+
+class RAGSourceOut(BaseModel):
+    document_name: str
+    page_number: int
+    score: float
+    text: str
+
+
+# --- Chat Schemas ---
 class ChatMessage(BaseModel):
     role: Literal["user", "assistant"]
     content: str = Field(min_length=1, max_length=MAX_CHAT_MESSAGE_LENGTH)
@@ -151,11 +179,72 @@ class ChatMessage(BaseModel):
 
 class ChatRequest(BaseModel):
     messages: list[ChatMessage] = Field(min_length=1, max_length=MAX_CHAT_MESSAGES)
-    # Frontend tanlagan til — ixtiyoriy. Faqat matn tilini avtomatik aniqlab
-    # bo'lmagandagina javob tili sifatida ishlatiladi.
     language: Literal["uz-latn", "uz-cyrl", "ru", "en"] | None = None
 
 
 class ChatResponse(BaseModel):
     answer: str
     model_name: str
+    rag_sources: list[RAGSourceOut] = Field(default_factory=list)
+    summary: str | None = None
+
+
+class ChatHistoryMessageOut(BaseModel):
+    id: int
+    field_id: int
+    role: Literal["user", "assistant"]
+    content: str
+    rag_sources: list[dict[str, Any]] | None = None
+    created_at: str
+
+
+class ChatSummaryOut(BaseModel):
+    field_id: int
+    summary_text: str
+    message_count: int
+    last_message_id: int
+    updated_at: str
+
+
+# --- Yield Prediction Schemas ---
+class YieldPredictRequest(BaseModel):
+    model_name: str = "CatBoost"
+    crop: str | None = None
+    planting_date: date | None = None
+    harvest_date: date | None = None
+
+
+class FeatureImportanceOut(BaseModel):
+    feature: str
+    importance: float
+    description: str
+
+
+class PhenologyPointOut(BaseModel):
+    month: int
+    ndvi: float
+    evi: float
+    ndre: float
+    ndmi: float
+    s1_vh: float
+    s1_vv_vh: float
+    temp_mean: float
+    rain_sum: float
+    soil_moisture: float
+
+
+class YieldPredictResponse(BaseModel):
+    crop: str
+    crop_display_name: str
+    model_used: str
+    predicted_yield_t_ha: float
+    yield_min_expected: float
+    yield_max_expected: float
+    total_expected_yield_tons: float
+    total_yield_min_tons: float
+    total_yield_max_tons: float
+    field_area_ha: float
+    top_features: list[FeatureImportanceOut]
+    phenology_timeline: list[PhenologyPointOut]
+    features_count: int
+    execution_time_sec: float

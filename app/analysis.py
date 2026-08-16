@@ -23,6 +23,59 @@ def _round2(value: float | None) -> float | None:
     return round(float(value), 2) if value is not None else None
 
 
+def _extract_metric_mean(val_list: Any, default: float) -> float:
+    if not val_list or not isinstance(val_list, list):
+        return default
+    last = val_list[-1]
+    if isinstance(last, dict):
+        m = last.get("mean") or last.get("mean_value") or last.get("median")
+        if m is not None:
+            try:
+                return float(m)
+            except (ValueError, TypeError):
+                return default
+    elif isinstance(last, int | float):
+        return float(last)
+    return default
+
+
+def generate_expert_agronomy_advice(
+    crop_name: str, metric_history: dict[str, Any]
+) -> tuple[str, dict[str, list[str]]]:
+    latest_ndvi = _extract_metric_mean(metric_history.get("NDVI"), 0.45)
+    latest_ndmi = _extract_metric_mean(metric_history.get("NDMI"), 0.25)
+    latest_ndre = _extract_metric_mean(metric_history.get("NDRE"), 0.28)
+
+    red: list[str] = []
+    yellow: list[str] = []
+    green: list[str] = []
+
+    if latest_ndvi < 0.35:
+        red.append(f"{crop_name} maydonida vegetatsiya (NDVI: {latest_ndvi:.2f}) past darajada. Sug'orish va oziqlantirish zarur.")
+    elif latest_ndvi < 0.55:
+        yellow.append(f"O'rtacha vegetatsiya holati (NDVI: {latest_ndvi:.2f}). Bargdan mikroelementlar bilan oziqlantirish tavsiya etiladi.")
+    else:
+        green.append(f"Vegetatsiya ko'rsatkichi (NDVI: {latest_ndvi:.2f}) yuqori va me'yorda rivojlanmoqda.")
+
+    if latest_ndmi < 0.15:
+        red.append("Barg namligi (NDMI) past. Tuproqda namlik yetishmovchiligi xavfi mavjud.")
+    elif latest_ndmi < 0.30:
+        yellow.append("Tuproq va o'simlik namligi o'rtacha. Navbatdagi sug'orish muddatini rejalashtiring.")
+    else:
+        green.append("O'simlik to'qimalarida suv ta'minoti yetarli darajada.")
+
+    if latest_ndre < 0.20:
+        yellow.append("Xlorofill (NDRE) miqdori kamaygan, azotli o'g'it kiritishni ko'rib chiqing.")
+    else:
+        green.append("Xlorofill va azot balansi ijobiy dinamikada.")
+
+    advice = {"red": red[:3], "yellow": yellow[:3], "green": green[:3]}
+    content = f"{crop_name} maydoni bo'yicha sun'iy yo'ldosh tahlili asosida agronomik xulosa shakllantirildi."
+    return content, advice
+
+
+
+
 class AnalysisError(RuntimeError):
     pass
 
@@ -237,6 +290,16 @@ class AnalysisService:
             newest = max(processed, key=lambda value: value["acquired_at"])
             if self.ai is None:
                 recommendation_error = "OPENAI_API_KEY sozlanmagan; avvalgi tavsiya saqlandi"
+                if recommendation is None:
+                    crop = str(field.get("crop_name") or "Ekin")
+                    content, advice = generate_expert_agronomy_advice(crop, self._metric_history(field_id))
+                    recommendation = self.repository.replace_recommendation(
+                        field_id,
+                        int(newest["id"]),
+                        content,
+                        "expert-agronomy-rules",
+                        advice,
+                    )
             else:
                 try:
                     ai_result = await self.ai.recommendation(
@@ -251,6 +314,16 @@ class AnalysisService:
                     )
                 except AIError as exc:
                     recommendation_error = str(exc)
+                    if recommendation is None:
+                        crop = str(field.get("crop_name") or "Ekin")
+                        content, advice = generate_expert_agronomy_advice(crop, self._metric_history(field_id))
+                        recommendation = self.repository.replace_recommendation(
+                            field_id,
+                            int(newest["id"]),
+                            content,
+                            "expert-agronomy-rules",
+                            advice,
+                        )
         logger.info(
             "Field analysis completed field_id=%s processed=%d selected_id=%s advice_updated=%s",
             field_id,
@@ -259,6 +332,7 @@ class AnalysisService:
             bool(processed and recommendation_error is None and self.ai is not None),
         )
         return AnalysisResult(selected, len(processed), recommendation, recommendation_error)
+
 
     async def load_history(self, field_id: int, from_date: date) -> HistoricalLoadResult:
         """Cache metric arrays for every catalog acquisition in a requested date range."""

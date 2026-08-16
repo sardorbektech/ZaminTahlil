@@ -23,6 +23,14 @@ class DuplicateFieldError(ValueError):
     pass
 
 
+def generate_field_id() -> str:
+    import secrets
+    import string
+
+    alphabet = string.ascii_lowercase + string.digits
+    return "".join(secrets.choice(alphabet) for _ in range(8))
+
+
 class Repository:
     def __init__(self, database: Database) -> None:
         self.database = database
@@ -38,14 +46,16 @@ class Repository:
         growth_stage: str,
     ) -> dict[str, Any]:
         now = iso_utc()
+        public_id = generate_field_id()
         try:
             with self.database.connect() as connection:
                 cursor = connection.execute(
                     """INSERT INTO fields(
-                        geometry_json, geometry_hash, area_hectares, crop_name,
+                        public_id, geometry_json, geometry_hash, area_hectares, crop_name,
                         planted_on, growth_stage, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
+                        public_id,
                         json.dumps(geometry, separators=(",", ":")),
                         geometry_hash,
                         area_hectares,
@@ -68,12 +78,21 @@ class Repository:
             rows = connection.execute("SELECT * FROM fields ORDER BY created_at DESC").fetchall()
         return [decode_json_columns(row_to_dict(row), "geometry_json") for row in rows]
 
-    def get_field(self, field_id: int) -> dict[str, Any]:
+    def get_field(self, field_id: int | str) -> dict[str, Any]:
         with self.database.connect() as connection:
-            row = connection.execute("SELECT * FROM fields WHERE id = ?", (field_id,)).fetchone()
+            if isinstance(field_id, int) or (isinstance(field_id, str) and field_id.isdigit()):
+                row = connection.execute(
+                    "SELECT * FROM fields WHERE id = ? OR public_id = ?",
+                    (int(field_id), str(field_id)),
+                ).fetchone()
+            else:
+                row = connection.execute(
+                    "SELECT * FROM fields WHERE public_id = ?", (str(field_id),)
+                ).fetchone()
         if row is None:
             raise NotFoundError("Dala topilmadi")
         return decode_json_columns(row_to_dict(row), "geometry_json")
+
 
     def create_acquisition_if_new(
         self,
@@ -269,8 +288,13 @@ class Repository:
     def list_artifacts(self, field_id: int, acquisition_id: int) -> list[dict[str, Any]]:
         with self.database.connect() as connection:
             rows = connection.execute(
-                """SELECT artifacts.* FROM artifacts
+                """SELECT artifacts.*, index_values.mean_value, index_values.min_value,
+                index_values.median_value, index_values.max_value,
+                index_values.valid_pixel_count AS layer_valid_pixel_count
+                FROM artifacts
                 JOIN acquisitions ON acquisitions.id = artifacts.acquisition_id
+                LEFT JOIN index_values ON index_values.acquisition_id = artifacts.acquisition_id
+                    AND index_values.index_name = artifacts.layer_name
                 WHERE artifacts.acquisition_id = ? AND acquisitions.field_id = ?
                 AND artifacts.render_version = ?""",
                 (acquisition_id, field_id, RENDER_VERSION),
@@ -407,18 +431,143 @@ class Repository:
         # Faqat rasm artefaktlari (PNG) o'chiriladi; kuzatuv va index_values
         # yozuvlari (statistikalar bilan) sana-oralig'i grafiklari uchun saqlanadi.
         return [str(row["relative_path"]) for row in artifact_rows]
-        def list_artifacts(self, field_id: int, acquisition_id: int) -> list[dict[str, Any]]:
-            with self.database.connect() as connection:
-                rows = connection.execute(
-                    """SELECT artifacts.*, index_values.mean_value, index_values.min_value,
-                    index_values.median_value, index_values.max_value,
-                    index_values.valid_pixel_count AS layer_valid_pixel_count
-                    FROM artifacts
-                    JOIN acquisitions ON acquisitions.id = artifacts.acquisition_id
-                    LEFT JOIN index_values ON index_values.acquisition_id = artifacts.acquisition_id
-                        AND index_values.index_name = artifacts.layer_name
-                    WHERE artifacts.acquisition_id = ? AND acquisitions.field_id = ?
-                    AND artifacts.render_version = ?""",
-                    (acquisition_id, field_id, RENDER_VERSION),
-                ).fetchall()
-            return [decode_json_columns(row_to_dict(row), "bbox_json") for row in rows]
+
+    # --- Chat Messages & Summary ---
+    def add_chat_message(
+        self,
+        field_id: int,
+        role: str,
+        content: str,
+        rag_sources: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        now = iso_utc()
+        rag_sources_json = json.dumps(rag_sources, ensure_ascii=False) if rag_sources else None
+        with self.database.connect() as connection:
+            cursor = connection.execute(
+                """INSERT INTO field_chat_messages(field_id, role, content, rag_sources_json, created_at)
+                VALUES (?, ?, ?, ?, ?)""",
+                (field_id, role, content, rag_sources_json, now),
+            )
+            msg_id = int(cursor.lastrowid or 0)
+            row = connection.execute(
+                "SELECT * FROM field_chat_messages WHERE id = ?", (msg_id,)
+            ).fetchone()
+        assert row is not None
+        return decode_json_columns(row_to_dict(row), "rag_sources_json")
+
+    def list_chat_messages(self, field_id: int, limit: int = 50) -> list[dict[str, Any]]:
+        with self.database.connect() as connection:
+            rows = connection.execute(
+                """SELECT * FROM field_chat_messages
+                WHERE field_id = ?
+                ORDER BY id ASC LIMIT ?""",
+                (field_id, limit),
+            ).fetchall()
+        return [decode_json_columns(row_to_dict(row), "rag_sources_json") for row in rows]
+
+    def get_chat_summary(self, field_id: int) -> dict[str, Any] | None:
+        with self.database.connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM field_chat_summaries WHERE field_id = ?", (field_id,)
+            ).fetchone()
+        if row is None:
+            return None
+        return row_to_dict(row)
+
+    def upsert_chat_summary(
+        self,
+        field_id: int,
+        summary_text: str,
+        message_count: int,
+        last_message_id: int,
+    ) -> dict[str, Any]:
+        now = iso_utc()
+        with self.database.connect() as connection:
+            connection.execute(
+                """INSERT INTO field_chat_summaries(field_id, summary_text, message_count, last_message_id, updated_at)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(field_id) DO UPDATE SET
+                    summary_text=excluded.summary_text,
+                    message_count=excluded.message_count,
+                    last_message_id=excluded.last_message_id,
+                    updated_at=excluded.updated_at""",
+                (field_id, summary_text, message_count, last_message_id, now),
+            )
+        summary = self.get_chat_summary(field_id)
+        assert summary is not None
+        return summary
+
+    # --- RAG Documents ---
+    def list_rag_documents(self) -> list[dict[str, Any]]:
+        with self.database.connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM rag_documents ORDER BY created_at DESC"
+            ).fetchall()
+        return [row_to_dict(row) for row in rows]
+
+    def delete_rag_document(self, document_id: int) -> bool:
+        with self.database.connect() as connection:
+            cursor = connection.execute(
+                "DELETE FROM rag_documents WHERE id = ?", (document_id,)
+            )
+            return cursor.rowcount > 0
+
+    # --- Yield Predictions ---
+    def save_yield_prediction(
+        self,
+        *,
+        field_id: int,
+        crop: str,
+        model_name: str,
+        predicted_yield_t_ha: float,
+        yield_min_expected: float,
+        yield_max_expected: float,
+        total_expected_yield_tons: float,
+        field_area_ha: float,
+        top_features: list[dict[str, Any]],
+        phenology_timeline: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        now = iso_utc()
+        with self.database.connect() as connection:
+            cursor = connection.execute(
+                """INSERT INTO yield_predictions(
+                    field_id, crop, model_name, predicted_yield_t_ha, yield_min_expected,
+                    yield_max_expected, total_expected_yield_tons, field_area_ha,
+                    top_features_json, phenology_timeline_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    field_id,
+                    crop,
+                    model_name,
+                    predicted_yield_t_ha,
+                    yield_min_expected,
+                    yield_max_expected,
+                    total_expected_yield_tons,
+                    field_area_ha,
+                    json.dumps(top_features, ensure_ascii=False),
+                    json.dumps(phenology_timeline, ensure_ascii=False),
+                    now,
+                ),
+            )
+            rec_id = int(cursor.lastrowid or 0)
+            row = connection.execute(
+                "SELECT * FROM yield_predictions WHERE id = ?", (rec_id,)
+            ).fetchone()
+        assert row is not None
+        return decode_json_columns(
+            row_to_dict(row), "top_features_json", "phenology_timeline_json"
+        )
+
+    def get_latest_yield_prediction(self, field_id: int) -> dict[str, Any] | None:
+        with self.database.connect() as connection:
+            row = connection.execute(
+                """SELECT * FROM yield_predictions
+                WHERE field_id = ?
+                ORDER BY created_at DESC, id DESC LIMIT 1""",
+                (field_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return decode_json_columns(
+            row_to_dict(row), "top_features_json", "phenology_timeline_json"
+        )

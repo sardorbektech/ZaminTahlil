@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 5
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS schema_version (
 
 CREATE TABLE IF NOT EXISTS fields (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
     geometry_json TEXT NOT NULL,
     geometry_hash TEXT NOT NULL UNIQUE,
     area_hectares REAL NOT NULL CHECK(area_hectares > 0),
@@ -48,9 +49,6 @@ CREATE TABLE IF NOT EXISTS index_values (
     index_name TEXT NOT NULL,
     relative_path TEXT NOT NULL UNIQUE,
     valid_pixel_count INTEGER NOT NULL CHECK(valid_pixel_count >= 0),
-    -- Grafik va AI tarixi uchun oldindan hisoblangan statistikalar. Bu qiymatlar
-    -- to'liq raster massivini (.npy) qayta o'qishni keraksiz qiladi va yillik
-    -- ma'lumot uchun xotira/diskdan tejaydi. Yaroqli piksel bo'lmasa NULL bo'ladi.
     mean_value REAL,
     min_value REAL,
     median_value REAL,
@@ -79,12 +77,67 @@ CREATE TABLE IF NOT EXISTS recommendations (
     model_name TEXT NOT NULL,
     created_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS field_chat_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    field_id INTEGER NOT NULL REFERENCES fields(id) ON DELETE CASCADE,
+    role TEXT NOT NULL CHECK(role IN ('user', 'assistant')),
+    content TEXT NOT NULL,
+    rag_sources_json TEXT,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_chat_field_time ON field_chat_messages(field_id, id ASC);
+
+CREATE TABLE IF NOT EXISTS field_chat_summaries (
+    field_id INTEGER PRIMARY KEY REFERENCES fields(id) ON DELETE CASCADE,
+    summary_text TEXT NOT NULL,
+    message_count INTEGER NOT NULL DEFAULT 0,
+    last_message_id INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS rag_documents (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    file_path TEXT NOT NULL,
+    file_hash TEXT NOT NULL,
+    total_pages INTEGER NOT NULL,
+    chunk_count INTEGER NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS rag_chunks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    document_id INTEGER NOT NULL REFERENCES rag_documents(id) ON DELETE CASCADE,
+    page_number INTEGER NOT NULL,
+    chunk_index INTEGER NOT NULL,
+    chunk_text TEXT NOT NULL,
+    embedding BLOB NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_rag_chunks_doc ON rag_chunks(document_id);
+
+CREATE TABLE IF NOT EXISTS yield_predictions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    field_id INTEGER NOT NULL REFERENCES fields(id) ON DELETE CASCADE,
+    crop TEXT NOT NULL,
+    model_name TEXT NOT NULL,
+    predicted_yield_t_ha REAL NOT NULL,
+    yield_min_expected REAL NOT NULL,
+    yield_max_expected REAL NOT NULL,
+    total_expected_yield_tons REAL NOT NULL,
+    field_area_ha REAL NOT NULL,
+    top_features_json TEXT NOT NULL,
+    phenology_timeline_json TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_yield_field_time ON yield_predictions(field_id, created_at DESC);
 """
 
 
 class Database:
-    def __init__(self, path: Path) -> None:
-        self.path = path
+    def __init__(self, path: Path | str) -> None:
+        self.path = Path(path)
+
 
     def initialize(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -115,11 +168,26 @@ class Database:
                 f"DELETE FROM artifacts WHERE layer_name NOT IN ('RGB','QA',{placeholders})",
                 allowed,
             )
+            field_columns = {
+                str(row["name"]) for row in connection.execute("PRAGMA table_info(fields)").fetchall()
+            }
+            if "public_id" not in field_columns:
+                connection.execute("ALTER TABLE fields ADD COLUMN public_id TEXT")
+                import secrets
+                import string
+
+                rows = connection.execute("SELECT id FROM fields WHERE public_id IS NULL").fetchall()
+                alphabet = string.ascii_lowercase + string.digits
+                for r in rows:
+                    pid = "".join(secrets.choice(alphabet) for _ in range(8))
+                    connection.execute("UPDATE fields SET public_id = ? WHERE id = ?", (pid, r["id"]))
+
             connection.execute(
                 "INSERT OR IGNORE INTO schema_version(version, applied_at) "
                 "VALUES (?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
                 (SCHEMA_VERSION,),
             )
+
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:

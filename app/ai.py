@@ -170,49 +170,106 @@ class AIClient:
             structured_advice=True,
         )
 
+    async def generate_summary(
+        self,
+        messages: list[dict[str, Any]],
+        existing_summary: str | None = None,
+    ) -> str:
+        """Suhbat xabarlarining qisqa va lo'nda asosiy xulosasini yaratadi."""
+        lines = []
+        for msg in messages:
+            msg_id = msg.get("id", "?")
+            created_at = msg.get("created_at", "")[:16].replace("T", " ")
+            role = "Foydalanuvchi" if msg.get("role") == "user" else "Yordamchi"
+            content = msg.get("content", "").strip()[:180]
+            lines.append(f"[#{msg_id}, {created_at}] {role}: {content}")
+
+        prompt = (
+            "Dala muloqoti bo'yicha eng muhim asosiy ma'lumotlarni qisqa xulosa (Summary) shaklida yozing. "
+            "Faqat ekin holati, aniqlangan asosiy masala va berilgan amaliy tavsiyalarni 1-3 ta lo'nda bandda "
+            "bayon qiling. Ortiqcha so'z va takrorlarsiz, juda lo'nda bo'lsin.\n\n"
+            f"Avvalgi xulosa (agar bo'lsa):\n{existing_summary or 'Mavjud emas'}\n\n"
+            f"Yangi xabarlar:\n" + "\n".join(lines)
+        )
+        try:
+            result = await self.generate_with_fallback(
+                prompt,
+                instructions="Siz professional agronom-tahlilchisiz. Faqat eng muhim, lo'nda va qisqa asosiy ma'lumotlarni qaytaring.",
+                structured_advice=False,
+            )
+            return result.content
+        except Exception as exc:
+            logger.warning("Summary generation failed: %s, using fallback", exc)
+            fallback = "; ".join([line.split(": ", 1)[-1] for line in lines[-3:]])
+            return f"Asosiy xulosa: {fallback}"
+
+
     async def chat(
         self,
         field: dict[str, Any],
         recommendation: dict[str, Any],
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         *,
+        recent_ndvi_metrics: dict[str, list[dict[str, Any]]] | None = None,
+        chat_summary: str | None = None,
+        rag_context: str | None = None,
         language: str | None = None,
     ) -> AIResult:
-        context = {
-            "current_recommendation": recommendation["content"],
+        """System Prompt + 5 kunlik NDVI qiymatlar + Summary + RAG kontekst + User savoli."""
+        structured_context: dict[str, Any] = {
             "field": {
-                "crop_name": field["crop_name"],
-                "area_hectares": field["area_hectares"],
-                "planted_on": field["planted_on"],
-                "growth_stage": field["growth_stage"],
+                "crop_name": field.get("crop_name"),
+                "area_hectares": field.get("area_hectares"),
+                "planted_on": field.get("planted_on"),
+                "growth_stage": field.get("growth_stage"),
             },
+            "current_field_recommendation": recommendation.get("content"),
         }
+
+        if recent_ndvi_metrics:
+            structured_context["last_five_satellite_ndvi_and_indices"] = recent_ndvi_metrics
+
+        if chat_summary:
+            structured_context["previous_chat_summary_with_ids_and_time"] = chat_summary
+
+        if rag_context:
+            structured_context["rag_agronomy_book_knowledge"] = rag_context
+
         inputs: list[dict[str, Any]] = [
             {
                 "role": "user",
-                "content": "Loyiha konteksti (fakt sifatida ishlating): "
-                + json.dumps(context, ensure_ascii=False),
+                "content": "LOYIHA DALA KONTEKSTI VA ILMIY FAKTLAR:\n"
+                + json.dumps(structured_context, ensure_ascii=False, indent=2),
             }
         ]
-        inputs.extend(messages)
 
-        # Javob tili ustuvorligi: matnda aniq so'ralgan til (LLM ko'rsatmasi orqali)
-        # > avtomatik aniqlangan matn tili > frontend tili.
+        # Xabarlarni qo'shish (faqat role va content)
+        for m in messages:
+            inputs.append({"role": m["role"], "content": m["content"]})
+
+        # Til aniqlash
         last_user_text = next(
             (m["content"] for m in reversed(messages) if m.get("role") == "user"),
             "",
         )
         detected = detect_language(last_user_text) if last_user_text else None
         target = detected or language
+
+        instructions = AI_CHAT_SYSTEM_PROMPT
         if target in SUPPORTED_LANGUAGES:
-            instructions = AI_CHAT_SYSTEM_PROMPT + (
+            instructions += (
                 f"\n\nJavob tili: {LANGUAGE_NAMES[target]} tili. "
                 "Javobni aynan shu tilda yozing. "
                 "Faqat foydalanuvchi oxirgi xabarida javob tilini aniq boshqacha "
                 "so'ragan bo'lsa, so'ralgan tilda javob bering."
             )
-        else:
-            instructions = AI_CHAT_SYSTEM_PROMPT
+
+        if rag_context:
+            instructions += (
+                "\n\nEslatma: RAG orqali agronom kitobidan faktlar taqdim etildi. "
+                "Agar savolga tegishli bo'lsa, javobingizda ushbu kitob ma'lumotlariga "
+                "tayangan holda batafsil va amaliy tushuntirish bering."
+            )
 
         return await self.generate_with_fallback(
             inputs,
