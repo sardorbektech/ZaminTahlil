@@ -45,12 +45,13 @@ class FakeAI:
         self.fail = False
         self.history = None
 
-    async def recommendation(self, field, acquisition, history) -> AIResult:
+    async def recommendation(self, field, acquisition, history, *args, **kwargs) -> AIResult:
         self.calls += 1
         self.history = history
         if self.fail:
             raise AIError("AI unavailable")
         return AIResult(f"recommendation-{self.calls}", "gpt-5.4-nano")
+
 
 
 @pytest.mark.asyncio

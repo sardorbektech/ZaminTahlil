@@ -94,7 +94,37 @@ graph TD
 - **A/B Swipe Taqqoslash**: Turli sanalardagi yoki turli indekslardagi tasvirlarni slayd (swipe) chizig‘i orqali o‘zaro solishtirish imkoniyati.
 - **Aniq Koordinatali Overlay**: Barcha qatlamlar o‘zining haqiqiy geodezik bounding boxi (`artifact.bbox`) bo‘yicha to‘g‘ridan-to‘g‘ri dala xaritasiga joylashtiriladi (`L.imageOverlay`).
 
-### 3.3. Mashinali O‘rganish (ML) Hosildorlik Bashorati
+### 3.3. 5 Bosqichli Biofizik va Fazoviy Anomaliyalar Diagnostikasi Moduli
+Sentinel-2 L2A spektral kanallari asosida daladagi o'choqli muammolarni matematik va biofizik jihatdan aniqlash hamda ularning kelib chiqish sabablarini bir-biridan ajratish:
+1. **1-Bosqich: Spektral Piksellarni Qirqish va Filtrlash**:
+   - Dala chegarasi polygon maskasi (`data_mask`) yordamida dala tashqarisidagi barcha yo‘llar va ob’yektlar chiqarib tashlanadi.
+   - Oxirgi 60 kunlik o‘tishlar ichidan bulutlilik qoplami $\le 30\%$ bo‘lgan eng tiniq va ishonchli piksellar olinadi.
+2. **2-Bosqich: 10+ Biofizik Spektral Indekslar Hisoblash**:
+   - $NDVI = \frac{B08 - B04}{B08 + B04}$ (Vegetatsiya indeksi)
+   - $SAVI = \frac{B08 - B04}{B08 + B04 + 0.5} \times 1.5$ (Tuproq ta'siridan tozalangan vegetatsiya)
+   - $LAI = 0.57 \times \exp(2.33 \times NDVI)$ (Barg sathi yuzasi indeksi)
+   - $NDRE = \frac{B8A - B05}{B8A + B05}$ (Qizil chegara xlorofill va azot holati)
+   - $BRI = \frac{B02}{B04}$ (Bargning erta oqarishi va nekroz ko‘rsatkichi)
+   - $LCI = \frac{B8A - B05}{B8A + B04}$ (Barg xlorofill indeksi)
+   - $NDWI = \frac{B8A - B11}{B8A + B11}$ (O‘simlik to‘qimalari suv ta’minoti)
+   - $MSI = \frac{B11}{B08}$ (Namlik stressi indeksi)
+   - $NDSI = \frac{B03 - B11}{B03 + B11}$ (Tuproq va o‘simlik sho‘rlanish darajasi)
+   - $\Delta T = (1 - NDWI) \times (1 - NDVI) \times 6.0^\circ\text{C}$ (Transpiratsiya tushishi oqibatidagi barg harorati anomaliyasi)
+3. **3-Bosqich: Fazoviy Anomaliyalarni Qidirish va Klasterlash**:
+   - Binar anomaliya sharti: $(NDVI < 0.55) \lor (NDVI < \overline{NDVI}_{\text{field}} - 0.10) \lor (NDRE < 0.48) \lor (NDWI < 0.28) \lor (NDSI > 0.38)$.
+   - 8-Connectivity fazoviy bog‘lanish (`scipy.ndimage.label`) orqali maydoni $200\text{ m}^2$ (2 piksel) dan katta o‘choqlar klasterlanadi.
+   - Maydoni va og‘irligi bo‘yicha eng xavfli **Top 5** ta o‘choq saralanadi va 8 ta kompas sektori (Shimoliy, Janubiy, Sharqiy, G'arbiy, Shimoli-sharqiy va h.k.) hamda koordinata markazi aniqlanadi.
+4. **4-Bosqich: 4 Bosqichli Differensial Qarorlar Modeli (Decision Tree)**:
+   - **Sho‘rlanish Stressi:** $NDSI \ge 0.38 \land SAVI < 0.30 \to$ Osmotik sho‘r bosimi, fosfogips (3-4 t/ga) va chuqur sho‘r yuvish.
+   - **Erta Zamburug‘ Infeksiyasi:** $NDRE < 0.45 \land BRI > 1.20 \land NDWI \ge 0.38 \to$ O‘simlik suvga to‘la bo‘lsa-da xlorofill tez parchalanmoqda (*Verticillium dahliae*, *Puccinia striiformis*, *Phytophthora infestans*). Topsin-M (1.5 kg/ga) yoki Ridomil Gold (2.5 kg/ga) bilan shoshilinch purkash.
+   - **Ksilema Blokadasi vs Gidrostress:** $NDWI < 0.25 \land NDRE < 0.40 \to$ Agar oxirgi 60 kunlik dinamikada $NDRE$ oldin tushgan bo‘lsa $\to$ Ildiz/poya tomirlarining zamburug‘li blokadasi; agar $NDWI$ oldin tushgan bo‘lsa $\to$ Sof tuproq namligi tanqisligi (gidrostress).
+5. **5-Bosqich: Fazoviy Anizotropiya & Egat Geometriyasi**:
+   - Kovariatsiya matritsasi xos qiymatlari $\lambda_{\max}, \lambda_{\min}$ orqali cho‘ziqlik koeffitsiyenti hisoblanadi:
+     $$E = \sqrt{\frac{\lambda_{\max}}{\lambda_{\min} + 10^{-4}}}$$
+   - $E > 3.0 \to$ Egat bo‘ylab cho‘zilgan chiziqli anomaliya (kultivator, traktor g‘ildiragi zichlashi, o‘g‘it solgich tiqilishi, egat sug‘orish maromi buzilishi);
+   - $E \le 3.0 \to$ Markazdan tarqaluvchi konsentrik doirasimon o‘choq (infeksiya tarqalishi, lokal sho‘rxok, mikro-relyef chuqurligi).
+
+### 3.4. Mashinali O‘rganish (ML) Hosildorlik Bashorati
 - **Ko‘p manbali 122 ta parametr matritsasi**:
   - $Open\text{-}Meteo$ kunlik agrometeorologiyasi (harorat, namlik, quyosh radiatsiyasi, $ET_0$, 3 chuqurlikdagi tuproq namligi);
   - $Sentinel-2$ optik spektral indekslari ($NDVI, EVI, GNDVI, SAVI, MSAVI, OSAVI, NDRE, NDMI, NDWI$);
@@ -108,32 +138,41 @@ graph TD
   - `Gradient Boosting Regressor`
 - **Natijalar**: 1 Gektar hosildorligi ($t/ga$), ishonchlilik oralig‘i ($\pm \sigma$), butun dalaning jami hosili ($tonna$), eng muhim 10 ta ta’sir omili ($Top\ Features$) hamda 2 o‘qli interaktiv fenologiya grafigi (`Chart.js`) va oylik batafsil jadval.
 
-### 3.4. RAG Agronomiya Bilimlar Bazasi
+### 3.5. RAG Agronomiya Bilimlar Bazasi
 - **PDF Kitoblarni Parsing Qilish**: Foydalanuvchi istalgan PDF agronomik qo‘llanmani yuklaydi, tizim uni 500–600 belgili mantiqiy bo‘laklarga (overlap: 80–100) ajratadi.
 - **100% Mahalliy Vektorlashtirish**: `fastembed` kutubxonasi va `BAAI/bge-small-en-v1.5` ONNX modeli yordamida 384 o‘lchamli binar embeddinglar hisoblanadi (hech qanday pullik tashqi embedding API talab qilinmaydi).
 - **Semantik Qidiruv**: Kosinus o‘xshashlik orqali savolga eng mos kitob parchalari ajratib olinadi ($Threshold: 0.50$).
 - **Jonli Terminal Monitoringi**: Har bir chat so‘rovida terminalda qidiruv so‘rovi, skanerlangan bo‘laklar soni, topilgan eng yaxshi 3 ta moslik ballari (`score`), kitob nomi va sahifalari rangli tarzda log qilinadi.
 
-### 3.5. Dala Muloqotlari Tarixi va Avtomatik Xulosa (Summary)
+### 3.6. Dala Muloqotlari Tarixi va Avtomatik Xulosa (Summary)
 - **Doimiy Xotira**: Muloqot xabarlari brauzer keshiga emas, server SQLite bazasiga (`field_chat_messages`) saqlanadi.
-- **5 Bosqichli Boyitilgan Prompt**:
-  $$\text{System Prompt} + \text{5 kunlik NDVI/metrikalar} + \text{Lo‘nda Summary} + \text{RAG Kitob Faktlari} + \text{Foydalanuvchi Savoli}$$
+- **6 Bosqichli Boyitilgan Prompt**:
+  $$\text{System Prompt} + \text{60 kunlik 10+ Metrikalar Taqsimoti} + \text{Fazoviy Anomaliyalar va Qarorlar Shajarasi} + \text{Lo‘nda Summary} + \text{RAG Kitob Faktlari} + \text{Foydalanuvchi Savoli}$$
 - **Lo‘nda Xulosa (Summary)**: Har bir muloqotdan so‘ng sun’iy intellekt suhbatning qisqa va faqat eng muhim faktik xulosasini (ekin holati, muammo va berilgan tavsiyalar) yangilab boradi (`field_chat_summaries`).
 
-### 3.6. Yillik va Tarixiy Indekslar Dinamikasi
+### 3.7. Yillik va Tarixiy Indekslar Dinamikasi
 - $Chart.js$ chiziqli grafigi orqali dalaning yillar bo‘yicha yoki tanlangan sanadan boshlab barcha 5 ta asosiy indekslarining o‘zgarish dinamikasini tahlil qilish.
 
 ---
 
 ## 4. Matematik Formulalar va Hisoblash Metodologiyasi
 
-### 4.1. Spektral Indekslar Formulalari
+### 4.1. Spektral va Biofizik Indekslar Formulalari
 
 | Indeks | To‘liq Nomi | Matematik Formula | Agronomik Ahamiyati |
 | :--- | :--- | :--- | :--- |
 | **NDVI** | Normalized Difference Vegetation Index | $\frac{B08 - B04}{B08 + B04}$ | Yashil biomassa zichligi va fotosintez faolligi |
+| **SAVI** | Soil-Adjusted Vegetation Index | $\frac{B08 - B04}{B08 + B04 + 0.5} \times 1.5$ | Tuproq ochiq joylarida aniq o‘sish ko‘rsatkichi |
+| **LAI** | Leaf Area Index | $0.57 \times \exp(2.33 \times NDVI)$ | Barg yuzasi maydoni ($m^2/m^2$) |
 | **NDMI** | Normalized Difference Moisture Index | $\frac{B08 - B11}{B08 + B11}$ | O‘simlik barg to‘qimalaridagi suv va namlik |
-| **NDRE** | Normalized Difference Red Edge Index | $\frac{B8A - B05}{B8A + B05}$ | Xlorofill miqdori va azot yetishmovchiligi |
+| **NDRE** | Normalized Difference Red Edge Index | $\frac{B8A - B05}{B8A + B05}$ | Xlorofill miqdori va erta azot yetishmovchiligi |
+| **BRI** | Bleaching / Browning Reflectance Index | $\frac{B02}{B04}$ | Barglarning sarg‘ayishi, xloroz va nekroz xavfi |
+| **LCI** | Leaf Chlorophyll Index | $\frac{B8A - B05}{B8A + B04}$ | Bargdagi xlorofillning bevosita konsentratsiyasi |
+| **NDWI** | Normalized Difference Water Index | $\frac{B8A - B11}{B8A + B11}$ | O‘simlik suv stressi va to‘qima turgori |
+| **MSI** | Moisture Stress Index | $\frac{B11}{B08}$ | O‘simlikning qurg‘oqchilikka chidamliligi |
+| **NDSI** | Normalized Difference Salinity Index | $\frac{B03 - B11}{B03 + B11}$ | Tuproq va o‘simlikdagi tuz to‘planishi |
+| **$\Delta T$** | Canopy Temperature Anomaly | $(1 - NDWI)(1 - NDVI) \times 6.0^\circ\text{C}$ | Transpiratsiya susayishi natijasida qizish |
+| **$E$** | Furrow Anisotropy Ratio | $\sqrt{\frac{\lambda_{\max}}{\lambda_{\min} + 10^{-4}}}$ | Egat bo‘yicha chiziqli ($>3.0$) yoki radial doiraviy ($\le 3.0$) o‘choq shakli |
 | **EVI** | Enhanced Vegetation Index | $2.5 \times \frac{B08 - B04}{B08 + 6B04 - 7.5B02 + 1}$ | Zich biomassada to‘yinishsiz rivojlanish |
 | **BSI** | Bare Soil Index | $\frac{(B11 + B04) - (B08 + B02)}{(B11 + B04) + (B08 + B02)}$ | Ochiq tuproq, mineral holat va sho‘rlanish |
 
@@ -152,13 +191,14 @@ $$\text{Water Balance} = \text{Precipitation} - \text{ET}_0$$
 | :--- | :--- |
 | **Backend** | Python 3.12+, FastAPI, Uvicorn, Pydantic v2, HTTPX |
 | **Ma’lumotlar Bazasi** | SQLite 3 (WAL mode, Foreign Keys ON, Schema v5) |
-| **Geofazoviy Tahlil** | Shapely 2.0+, PyProj 3.6+, NumPy |
+| **Geofazoviy Tahlil** | Shapely 2.0+, PyProj 3.6+, SciPy 1.18+ (ndimage, linalg), NumPy |
 | **Machine Learning** | Scikit-learn, CatBoost, LightGBM, XGBoost, Pandas, Joblib |
 | **NLP & RAG** | FastEmbed (ONNX Runtime), PyPDF, OpenAI API (gpt-5.4-nano / mini) |
 | **Tashqi API-lar** | Copernicus Data Space Ecosystem (Sentinel-2), Open-Meteo API |
 | **Frontend** | Vanilla JavaScript (ES6+), Leaflet, Leaflet-Draw, Chart.js, Marked.js, DOMPurify |
 | **Dizayn Tizimi** | Modern Vanilla CSS (Glassmorphism, Responsive Grid & Flexbox, Tailored HSL) |
-| **Xavfsizlik & Test** | Pure ASGI Security Headers, Sensitive Data Log Masking, PyTest (56 test) |
+| **Xavfsizlik & Test** | Pure ASGI Security Headers, Sensitive Data Log Masking, PyTest (61 test) |
+
 
 ---
 

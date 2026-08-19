@@ -147,8 +147,10 @@ class AIClient:
         field: dict[str, Any],
         acquisition: dict[str, Any],
         history: dict[str, list[dict[str, Any]]],
+        *,
+        anomaly_report: dict[str, Any] | None = None,
     ) -> AIResult:
-        allowed_context = {
+        allowed_context: dict[str, Any] = {
             "field": {
                 "crop_name": field["crop_name"],
                 "area_hectares": field["area_hectares"],
@@ -162,13 +164,17 @@ class AIClient:
                 "fully_cloudy": bool(acquisition["fully_cloudy"]),
                 "statistics_are_null": bool(acquisition["fully_cloudy"]),
             },
-            "last_five_observations_for_important_metrics": history,
+            "last_60_days_observations_and_metrics_distribution": history,
         }
+        if anomaly_report:
+            allowed_context["biophysical_anomaly_clusters_and_decision_tree"] = anomaly_report
+
         return await self.generate_with_fallback(
             json.dumps(allowed_context, ensure_ascii=False),
             instructions=AI_RECOMMENDATION_SYSTEM_PROMPT,
             structured_advice=True,
         )
+
 
     async def generate_summary(
         self,
