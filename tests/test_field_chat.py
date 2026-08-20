@@ -136,17 +136,22 @@ def test_chat_endpoint_with_rag_and_summary(tmp_path: Path) -> None:
             json={
                 "messages": [{"role": "user", "content": "Paxtaga qanday o'g'it berish kerak?"}],
                 "language": "uz-latn",
+                "rag_mode": "all_in_one",
             },
         )
         assert chat_resp.status_code == 200
         res_data = chat_resp.json()
         assert "azotli" in res_data["answer"]
         assert res_data["summary"] is not None
+        assert "rag_strategy" in res_data
+        assert "rag_source_title" in res_data
 
         # Verify history endpoint
         hist_resp = client.get(f"/api/fields/{field_id}/chat/history")
         assert hist_resp.status_code == 200
-        assert len(hist_resp.json()) == 2
+        messages = hist_resp.json()
+        assert len(messages) == 2
+        assert "rag_strategy" in messages[1]
 
         # Verify summary endpoint
         sum_resp = client.get(f"/api/fields/{field_id}/chat/summary")

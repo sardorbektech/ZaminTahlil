@@ -85,6 +85,84 @@ def test_rag_ingest_and_search(tmp_path: Path, capsys: pytest.CaptureFixture[str
 
 
 
+def test_bm25_scorer_and_fusion() -> None:
+    from app.rag import BM25Scorer, _tokenize, _rrf_fusion, _mmr_select
+
+    corpus_raw = [
+        "Paxta yetishtirishda azotli o'g'itlar juda muhim ahamiyatga ega.",
+        "Bug'doy hosildorligini oshirish uchun fosfor va kaliy zarur.",
+        "G'o'za vilt kasalligi zamburug'li infektsiya hisoblanadi.",
+    ]
+    corpus_tokens = [_tokenize(t) for t in corpus_raw]
+    bm25 = BM25Scorer(corpus_tokens)
+
+    scores = bm25.get_scores(["paxta", "azotli"])
+    assert scores[0] > scores[1]
+    assert scores[0] > scores[2]
+
+    # Test RRF Fusion
+    list1 = [(0, 0.9), (1, 0.5)]
+    list2 = [(0, 10.2), (2, 5.0)]
+    fused = _rrf_fusion([list1, list2], k=60)
+    assert fused[0][0] == 0
+
+    # Test MMR Selection
+    embs = [
+        np.array([1.0, 0.0, 0.0], dtype=np.float32),
+        np.array([0.99, 0.01, 0.0], dtype=np.float32),
+        np.array([0.5, 0.86, 0.0], dtype=np.float32),
+    ]
+    q_emb = np.array([1.0, 0.0, 0.0], dtype=np.float32)
+    selected = _mmr_select([0, 1, 2], embs, q_emb, top_n=2, lambda_mult=0.3)
+    assert 0 in selected
+    assert 2 in selected  # Diverse chunk selected over near duplicate 1
+
+
+def test_four_rag_strategies(tmp_path: Path) -> None:
+    db_path = tmp_path / "rag_all.db"
+    db = Database(db_path)
+    db.initialize()
+
+    service = RAGService(base_dir=tmp_path / "data", similarity_threshold=0.35)
+    doc_name = "Agro_Test_Doc"
+    sample_texts = [
+        "G'o'zada vilt kasalligi paydo bo'lganda barglar sarg'ayadi va ildiz qorayadi.",
+        "Paxta yetishtirishda azotli o'g'itlar vegetatsiya davrida beriladi.",
+        "Sho'rxok tuproqlarda sho'r yuvish va gips solish tavsiya etiladi.",
+    ]
+    embeddings = service.embed_texts(sample_texts)
+
+    with db.connect() as conn:
+        cursor = conn.execute(
+            """INSERT INTO rag_documents(name, file_path, file_hash, total_pages, chunk_count, is_active, created_at)
+            VALUES (?, ?, ?, ?, ?, 1, datetime('now'))""",
+            (doc_name, "C:/test.pdf", "hash123", 1, len(sample_texts)),
+        )
+        doc_id = int(cursor.lastrowid or 0)
+        for idx, (txt, emb) in enumerate(zip(sample_texts, embeddings, strict=True)):
+            conn.execute(
+                """INSERT INTO rag_chunks(document_id, page_number, chunk_index, chunk_text, embedding)
+                VALUES (?, ?, ?, ?, ?)""",
+                (doc_id, 1, idx, txt, emb.astype(np.float32).tobytes()),
+            )
+
+    # 1. Naive RAG
+    naive_res = service.search_naive("vilt kasalligi", database=db, top_k=2)
+    assert len(naive_res) >= 1
+    assert naive_res[0].strategy == "naive"
+
+    # 2. Advanced RAG
+    adv_res = service.search_advanced("paxta azotli o'g'it", database=db, top_k=2)
+    assert len(adv_res) >= 1
+    assert adv_res[0].strategy == "advanced"
+
+    # 3. All-in-One Parallel RAG
+    all_res = service.search_all_in_one("vilt va paxta o'g'iti", database=db, top_k=3)
+    assert all_res.rag_strategy in ("all_in_one", "advanced", "naive")
+    assert "RAG" in all_res.rag_source_title
+    assert len(all_res.chunks) >= 1
+
+
 def test_rag_api_endpoints(tmp_path: Path) -> None:
     books_dir = tmp_path / "books"
     books_dir.mkdir(parents=True, exist_ok=True)
@@ -133,4 +211,6 @@ def test_rag_api_endpoints(tmp_path: Path) -> None:
         res = client.get("/api/rag/documents")
         assert res.status_code == 200
         assert len(res.json()) == 1
+
+
 

@@ -510,26 +510,64 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         saved_user_msg = repository.add_chat_message(field_id, "user", last_user_message)
 
-        # 2. RAG 768-dim semantik qidiruvi va Reranker (terminalda ko'rinadi)
-        rag_chunks = rag.search(
-            last_user_message,
-            database=database,
-            top_k=3,
-            selected_doc_ids=payload.selected_book_ids,
-        )
-        active_docs = repository.database.connect()
-        with repository.database.connect() as conn:
-            if payload.selected_book_ids:
-                placeholders = ",".join("?" for _ in payload.selected_book_ids)
-                act_rows = conn.execute(
-                    f"SELECT name FROM rag_documents WHERE id IN ({placeholders}) AND is_active = 1",
-                    payload.selected_book_ids,
-                ).fetchall()
-            else:
-                act_rows = conn.execute(
-                    "SELECT name FROM rag_documents WHERE is_active = 1"
-                ).fetchall()
-            active_book_names = [str(r["name"]) for r in act_rows]
+        # 2. RAG 4-Pog'onali qidiruv dvigateli (All-in-One, Advanced, Graph, Naive)
+        rag_mode = getattr(payload, "rag_mode", "all_in_one") or "all_in_one"
+
+        if rag_mode in ("all_in_one", "auto"):
+            rag_result = rag.search_all_in_one(
+                last_user_message,
+                database=database,
+                top_k=4,
+                selected_doc_ids=payload.selected_book_ids,
+            )
+            rag_chunks = rag_result.chunks
+            active_book_names = rag_result.active_book_names
+            rag_strategy = rag_result.rag_strategy
+            rag_source_title = rag_result.rag_source_title
+            graph_ctx = rag_result.graph_context
+        elif rag_mode == "advanced":
+            rag_chunks = rag.search_advanced(
+                last_user_message,
+                database=database,
+                top_k=4,
+                selected_doc_ids=payload.selected_book_ids,
+            )
+            rag_strategy = "advanced" if rag_chunks else "direct_llm"
+            rag_source_title = "🔬 Advanced RAG (Gibrid + Reranker)" if rag_chunks else "🤖 Umumiy LLM Bilimlari"
+            graph_ctx = None
+        elif rag_mode == "graph":
+            graph_ctx, rag_chunks = rag.search_graph(
+                last_user_message,
+                database=database,
+                top_k=30,
+                selected_doc_ids=payload.selected_book_ids,
+            )
+            rag_strategy = "graph" if graph_ctx else "direct_llm"
+            rag_source_title = "🕸️ Graph RAG (Bilimlar Grafi)" if graph_ctx else "🤖 Umumiy LLM Bilimlari"
+        else:  # naive
+            rag_chunks = rag.search_naive(
+                last_user_message,
+                database=database,
+                top_k=3,
+                selected_doc_ids=payload.selected_book_ids,
+            )
+            rag_strategy = "naive" if rag_chunks else "direct_llm"
+            rag_source_title = "📚 Naive RAG (Vektor Qidiruv)" if rag_chunks else "🤖 Umumiy LLM Bilimlari"
+            graph_ctx = None
+
+        if rag_mode != "all_in_one":
+            with repository.database.connect() as conn:
+                if payload.selected_book_ids:
+                    placeholders = ",".join("?" for _ in payload.selected_book_ids)
+                    act_rows = conn.execute(
+                        f"SELECT name FROM rag_documents WHERE id IN ({placeholders}) AND is_active = 1",
+                        payload.selected_book_ids,
+                    ).fetchall()
+                else:
+                    act_rows = conn.execute(
+                        "SELECT name FROM rag_documents WHERE is_active = 1"
+                    ).fetchall()
+                active_book_names = [str(r["name"]) for r in act_rows]
 
         rag_sources_out: list[dict[str, Any]] = [
             {
@@ -540,12 +578,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             }
             for c in rag_chunks
         ]
-        rag_context_str: str | None = None
+        
+        context_parts: list[str] = []
         if rag_chunks:
-            rag_context_str = "\n\n".join(
+            chunks_text = "\n\n".join(
                 f"[Manba: '{c.document_name}', {c.page_number}-bet (Score: {c.score:.2f})]\n{c.text}"
                 for c in rag_chunks
             )
+            context_parts.append(chunks_text)
+        if graph_ctx:
+            context_parts.append(f"BILIMLAR GRAFI (OB'EKTLAR VA MUNOSABATLAR):\n{graph_ctx}")
+
+        rag_context_str: str | None = "\n\n---\n\n".join(context_parts) if context_parts else None
 
         # 3. So'nggi 5 ta kuzatuv NDVI (va boshqa indekslar) metrikalarini olish
         recent_records = repository.index_value_records(field_id, limit=5)
@@ -586,7 +630,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         # 6. Assistant javobini saqlash
         repository.add_chat_message(
-            field_id, "assistant", result.content, rag_sources=rag_sources_out
+            field_id,
+            "assistant",
+            result.content,
+            rag_sources=rag_sources_out,
+            rag_strategy=rag_strategy,
+            rag_source_title=rag_source_title,
         )
 
         # 7. Xulosa (Summary) ni yangilash
@@ -604,6 +653,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "model_name": result.model_name,
             "rag_sources": rag_sources_out,
             "active_books": active_book_names,
+            "rag_strategy": rag_strategy,
+            "rag_source_title": rag_source_title,
             "summary": new_summary,
         }
 

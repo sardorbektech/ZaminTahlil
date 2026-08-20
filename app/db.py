@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -84,6 +84,8 @@ CREATE TABLE IF NOT EXISTS field_chat_messages (
     role TEXT NOT NULL CHECK(role IN ('user', 'assistant')),
     content TEXT NOT NULL,
     rag_sources_json TEXT,
+    rag_strategy TEXT,
+    rag_source_title TEXT,
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_chat_field_time ON field_chat_messages(field_id, id ASC);
@@ -196,6 +198,16 @@ class Database:
                 connection.execute("ALTER TABLE rag_documents ADD COLUMN embedding_model TEXT NOT NULL DEFAULT 'nomic-ai/nomic-embed-text-v1.5'")
             if "embedding_dim" not in rag_doc_columns:
                 connection.execute("ALTER TABLE rag_documents ADD COLUMN embedding_dim INTEGER NOT NULL DEFAULT 768")
+
+            # Chat Messages Schema v7 migrations
+            chat_msg_columns = {
+                str(row["name"])
+                for row in connection.execute("PRAGMA table_info(field_chat_messages)").fetchall()
+            }
+            if "rag_strategy" not in chat_msg_columns:
+                connection.execute("ALTER TABLE field_chat_messages ADD COLUMN rag_strategy TEXT")
+            if "rag_source_title" not in chat_msg_columns:
+                connection.execute("ALTER TABLE field_chat_messages ADD COLUMN rag_source_title TEXT")
 
             connection.execute(
                 "INSERT OR IGNORE INTO schema_version(version, applied_at) "

@@ -1023,6 +1023,18 @@ function renderChatLog() {
       ? DOMPurify.sanitize(marked.parse(rawContent))
       : rawContent;
 
+    let badgeHtml = "";
+    if (msg.role === "assistant") {
+      const strat = msg.rag_strategy || (msg.rag_sources && msg.rag_sources.length > 0 ? "all_in_one" : "direct_llm");
+      const title = msg.rag_source_title || (
+        strat === "all_in_one" ? "⚡ All-in-One RAG" :
+        strat === "advanced" ? "🔬 Advanced RAG" :
+        strat === "graph" ? "🕸️ Graph RAG" :
+        strat === "naive" ? "📚 Naive RAG" : "🤖 Umumiy LLM Bilimlari"
+      );
+      badgeHtml = `<div class="bubble-rag-badge badge-${strat}">${title}</div>`;
+    }
+
     let sourcesHtml = "";
     if (msg.rag_sources && Array.isArray(msg.rag_sources) && msg.rag_sources.length > 0) {
       sourcesHtml = `
@@ -1039,6 +1051,7 @@ function renderChatLog() {
     const timeStr = msg.created_at ? msg.created_at.split("T")[1]?.substring(0, 5) : "";
 
     bubble.innerHTML = `
+      ${badgeHtml}
       <div class="bubble-text">${parsedHTML}</div>
       ${sourcesHtml}
       <span class="bubble-time">${timeStr}</span>
@@ -1087,6 +1100,7 @@ $("chatForm")?.addEventListener("submit", async (e) => {
         messages: [{ role: "user", content: query }],
         language: window.i18n ? window.i18n.current : "uz-latn",
         selected_book_ids: state.selectedBookIds && state.selectedBookIds.length > 0 ? state.selectedBookIds : undefined,
+        rag_mode: "all_in_one",
       }),
     });
 
@@ -1094,6 +1108,8 @@ $("chatForm")?.addEventListener("submit", async (e) => {
       role: "assistant",
       content: res.answer,
       rag_sources: res.rag_sources,
+      rag_strategy: res.rag_strategy,
+      rag_source_title: res.rag_source_title,
       created_at: new Date().toISOString(),
     });
     renderChatLog();

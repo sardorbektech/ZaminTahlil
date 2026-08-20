@@ -439,14 +439,16 @@ class Repository:
         role: str,
         content: str,
         rag_sources: list[dict[str, Any]] | None = None,
+        rag_strategy: str | None = None,
+        rag_source_title: str | None = None,
     ) -> dict[str, Any]:
         now = iso_utc()
         rag_sources_json = json.dumps(rag_sources, ensure_ascii=False) if rag_sources else None
         with self.database.connect() as connection:
             cursor = connection.execute(
-                """INSERT INTO field_chat_messages(field_id, role, content, rag_sources_json, created_at)
-                VALUES (?, ?, ?, ?, ?)""",
-                (field_id, role, content, rag_sources_json, now),
+                """INSERT INTO field_chat_messages(field_id, role, content, rag_sources_json, rag_strategy, rag_source_title, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (field_id, role, content, rag_sources_json, rag_strategy, rag_source_title, now),
             )
             msg_id = int(cursor.lastrowid or 0)
             row = connection.execute(
