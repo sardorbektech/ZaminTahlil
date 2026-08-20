@@ -96,10 +96,14 @@ async def test_catalog_requests_and_returns_only_latest_five(
     assert client.payload["limit"] == 5
     # CDSE katalogi "sortby" ni qabul qilmaydi; saralash Python tomonida bo'ladi.
     assert "sortby" not in client.payload
-    assert client.payload["datetime"].startswith("../")
-    upper_bound = datetime.fromisoformat(client.payload["datetime"].removeprefix("../"))
+    assert "/" in client.payload["datetime"]
+    from_dt, to_dt = client.payload["datetime"].split("/")
+    upper_bound = datetime.fromisoformat(to_dt)
     assert upper_bound.astimezone(UTC).tzinfo is UTC
+    lower_bound = datetime.fromisoformat(from_dt)
+    assert lower_bound < upper_bound
     assert [item.product_id for item in items] == ["P2", "P3", "P4", "P5", "P6"]
+
 
 
 class RangeCatalogSpy(SentinelHubClient):

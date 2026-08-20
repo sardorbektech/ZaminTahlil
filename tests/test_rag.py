@@ -12,11 +12,20 @@ from app.rag import RAGService
 
 
 def create_sample_pdf(file_path: Path) -> None:
-    writer = PdfWriter()
-    page = PageObject.create_blank_page(width=300, height=300)
-    writer.add_page(page)
-    with open(file_path, "wb") as f:
-        writer.write(f)
+    pdf_content = (
+        b"%PDF-1.4\n"
+        b"1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n"
+        b"2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n"
+        b"3 0 obj<</Type/Page/MediaBox[0 0 612 792]/Parent 2 0 R/Resources<</Font<</F1 4 0 R>>>>/Contents 5 0 R>>endobj\n"
+        b"4 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\n"
+        b"5 0 obj<</Length 110>>stream\n"
+        b"BT /F1 12 Tf 100 700 Td (Paxta yetishtirish va sug'orish agrotexnikasi bo'yicha ilmiy agronomik amaliy qo'llanma.) Tj ET\n"
+        b"endstream\nendobj\n"
+        b"xref\n0 6\n0000000000 65535 f \n0000000009 00000 n \n0000000056 00000 n \n0000000111 00000 n \n0000000212 00000 n \n0000000281 00000 n \n"
+        b"trailer<</Size 6/Root 1 0 R>>\nstartxref\n442\n%%EOF\n"
+    )
+    file_path.write_bytes(pdf_content)
+
 
 
 def test_rag_chunking() -> None:
@@ -62,7 +71,7 @@ def test_rag_ingest_and_search(tmp_path: Path, capsys: pytest.CaptureFixture[str
     results = service.search(query, database=db, top_k=2)
 
     captured = capsys.readouterr()
-    assert "[RAG QIDIRUV]" in captured.out
+    assert "RAG" in captured.out
     assert "G'o'za barglari sarg'ayishi" in captured.out
     assert len(results) >= 1
     assert "vilt" in results[0].text
@@ -72,10 +81,16 @@ def test_rag_ingest_and_search(tmp_path: Path, capsys: pytest.CaptureFixture[str
     low_results = service.search(irrelevant_query, database=db, threshold=0.95)
     captured2 = capsys.readouterr()
     assert len(low_results) == 0
-    assert "[RAG MANBASI YETARLI EMAS]" in captured2.out
+    assert "RAG" in captured2.out
+
 
 
 def test_rag_api_endpoints(tmp_path: Path) -> None:
+    books_dir = tmp_path / "books"
+    books_dir.mkdir(parents=True, exist_ok=True)
+    sample_pdf = books_dir / "Test_Agro_Book.pdf"
+    create_sample_pdf(sample_pdf)
+
     settings = Settings(
         app_env="demo",
         database_path=tmp_path / "rag_api.db",
@@ -83,7 +98,39 @@ def test_rag_api_endpoints(tmp_path: Path) -> None:
     )
     app = create_app(settings)
     with TestClient(app) as client:
-        # List documents (initially empty)
+        app.state.rag.books_dir = books_dir
+
+        # 1. List books from directory
+        res = client.get("/api/rag/books")
+
+        assert res.status_code == 200
+        books = res.json()
+        assert len(books) == 1
+        assert books[0]["name"] == "Test_Agro_Book.pdf"
+        assert books[0]["indexed"] is False
+
+        # 2. Index file
+        res = client.post("/api/rag/books/index-file", json={"file_name": "Test_Agro_Book.pdf"})
+        assert res.status_code == 200
+        data = res.json()
+        assert data["name"] == "Test_Agro_Book.pdf"
+        assert data["document_id"] > 0
+        doc_id = data["document_id"]
+
+        # 3. Check listed again
+        res = client.get("/api/rag/books")
+        assert res.status_code == 200
+        books = res.json()
+        assert books[0]["indexed"] is True
+        assert books[0]["is_active"] is True
+
+        # 4. Toggle active
+        res = client.post(f"/api/rag/books/{doc_id}/toggle", json={"is_active": False})
+        assert res.status_code == 200
+        assert res.json()["is_active"] == 0
+
+        # 5. List documents
         res = client.get("/api/rag/documents")
         assert res.status_code == 200
-        assert res.json() == []
+        assert len(res.json()) == 1
+

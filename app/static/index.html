@@ -432,6 +432,20 @@
 
             <!-- TAB 4: AGRO-AI CHAT & SUMMARY -->
             <div id="tab-chat" class="tab-content">
+              <!-- Active Books Selector Bar -->
+              <div id="chatBookSelectorBar" class="chat-book-selector-bar">
+                <div class="active-books-info">
+                  <span class="icon">📚</span>
+                  <strong>RAG Manbalari:</strong>
+                  <div id="activeBooksPills" class="active-books-tags">
+                    <span class="book-tag-pill">Hamma kitoblar</span>
+                  </div>
+                </div>
+                <button id="openRagModalFromChat" class="manage-rag-link-btn" type="button">
+                  ⚙️ Kitoblarni tanlash / boshqarish
+                </button>
+              </div>
+
               <!-- Persistent Field Summary Card -->
               <div id="chatSummaryBox" class="field-summary-card">
                 <div class="summary-card-header">
@@ -460,7 +474,7 @@
                     data-i18n-placeholder="chat.inputPlaceholder"
                     placeholder="Masalan: Paxta bargidagi sarg'ayish sababi nima yoki NDVI ko'rsatkichi nimani bildiradi?"
                   ></textarea>
-                  <button class="primary-btn send-btn" type="submit" data-i18n="chat.submit">
+                  <button id="chatSendBtn" class="primary-btn send-btn" type="submit" data-i18n="chat.submit">
                     Yuborish ➔
                   </button>
                 </div>
@@ -512,50 +526,41 @@
       <div class="modal-card-window">
         <div class="modal-header-bar">
           <div class="modal-header-text">
-            <span class="modal-tag">KUTUBXONA</span>
+            <span class="modal-tag">KUTUBXONA (768-DIM RAG)</span>
             <h2 data-i18n="rag.modalTitle">Agronomiya Bilimlar Bazasi (RAG)</h2>
-            <p class="modal-subtitle" data-i18n="rag.modalSubtitle">PDF kitoblarni kiritish va boshqarish</p>
+            <p class="modal-subtitle">PDF kitoblarni tanlash, indekslash va yangi kitob yuklash</p>
           </div>
           <button id="closeRagModal" class="modal-close-icon" type="button" aria-label="Yopish">✕</button>
         </div>
 
         <div class="modal-scroll-body">
-          <form id="ragIngestForm" class="modal-ingest-form">
+          <!-- Upload new PDF form -->
+          <form id="ragUploadForm" class="modal-ingest-form">
             <div class="form-group">
-              <label for="ragPdfPath" data-i18n="rag.pathLabel">PDF kitob manzili (Fayl yo'li)</label>
-              <input
-                id="ragPdfPath"
-                type="text"
-                required
-                data-i18n-placeholder="rag.pathPlaceholder"
-                placeholder="Masalan: C:\kitoblar\paxtachilik_qollanmasi.pdf"
-              />
+              <label for="ragFileInput">📥 Yangi PDF Kitob Yuklash (data/books/)</label>
+              <input id="ragFileInput" type="file" accept=".pdf" required />
             </div>
-            <div class="form-group">
-              <label for="ragDocName" data-i18n="rag.nameLabel">Kitob nomi (ixtiyoriy)</label>
-              <input
-                id="ragDocName"
-                type="text"
-                data-i18n-placeholder="rag.namePlaceholder"
-                placeholder="Masalan: Paxtachilik amaliy qo'llanmasi"
-              />
-            </div>
-            <button id="ragIngestBtn" class="primary-btn modal-submit-btn" type="submit" data-i18n="rag.ingestBtn">
-              Kitobni kiritish va embedding hisoblash
+            <button id="ragUploadBtn" class="secondary-btn modal-submit-btn" type="submit">
+              Yuklash va 768-dim indekslash
             </button>
           </form>
 
           <div id="ragMessage" class="status-msg modal-msg" role="status"></div>
 
+          <!-- Books in data/books and database -->
           <div class="modal-docs-container">
-            <h3 class="docs-section-title" data-i18n="rag.docsTitle">Bazaga kiritilgan agronomik kitoblar</h3>
-            <div id="ragDocsList" class="modal-docs-grid">
-              <p class="muted-note" data-i18n="rag.noDocs">Hozircha kitob kiritilmagan.</p>
+            <h3 class="docs-section-title">📚 Mavjud Agronomik Kitoblar (data/books/)</h3>
+            <p class="muted-note" style="margin-bottom:0.75rem;">
+              Kerakli kitoblarni RAG qidiruvi uchun yoqishingiz yoki yangi kitobni indekslashingiz mumkin:
+            </p>
+            <div id="ragBooksGrid" class="modal-docs-grid">
+              <p class="muted-note">Kitoblar ro'yxati yuklanmoqda...</p>
             </div>
           </div>
         </div>
       </div>
     </div>
+
 
     <!-- Scripts -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>

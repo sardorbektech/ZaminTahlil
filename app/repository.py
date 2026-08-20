@@ -505,12 +505,38 @@ class Repository:
             ).fetchall()
         return [row_to_dict(row) for row in rows]
 
+    def get_rag_document(self, document_id: int) -> dict[str, Any] | None:
+        with self.database.connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM rag_documents WHERE id = ?", (document_id,)
+            ).fetchone()
+        return row_to_dict(row) if row else None
+
+    def toggle_rag_document(self, document_id: int, is_active: bool) -> dict[str, Any] | None:
+        with self.database.connect() as connection:
+            connection.execute(
+                "UPDATE rag_documents SET is_active = ? WHERE id = ?",
+                (int(is_active), document_id),
+            )
+            row = connection.execute(
+                "SELECT * FROM rag_documents WHERE id = ?", (document_id,)
+            ).fetchone()
+        return row_to_dict(row) if row else None
+
+    def get_active_rag_document_ids(self) -> list[int]:
+        with self.database.connect() as connection:
+            rows = connection.execute(
+                "SELECT id FROM rag_documents WHERE is_active = 1"
+            ).fetchall()
+        return [int(row["id"]) for row in rows]
+
     def delete_rag_document(self, document_id: int) -> bool:
         with self.database.connect() as connection:
             cursor = connection.execute(
                 "DELETE FROM rag_documents WHERE id = ?", (document_id,)
             )
             return cursor.rowcount > 0
+
 
     # --- Yield Predictions ---
     def save_yield_prediction(

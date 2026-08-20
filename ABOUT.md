@@ -193,16 +193,15 @@ $$\text{Water Balance} = \text{Precipitation} - \text{ET}_0$$
 | **Ma’lumotlar Bazasi** | SQLite 3 (WAL mode, Foreign Keys ON, Schema v5) |
 | **Geofazoviy Tahlil** | Shapely 2.0+, PyProj 3.6+, SciPy 1.18+ (ndimage, linalg), NumPy |
 | **Machine Learning** | Scikit-learn, CatBoost, LightGBM, XGBoost, Pandas, Joblib |
-| **NLP & RAG** | FastEmbed (ONNX Runtime), PyPDF, OpenAI API (gpt-5.4-nano / mini) |
-| **Tashqi API-lar** | Copernicus Data Space Ecosystem (Sentinel-2), Open-Meteo API |
+| **NLP & RAG** | FastEmbed 768-dim (`nomic-ai/nomic-embed-text-v1.5`), Hybrid Reranker, PyPDF, OpenAI API |
+| **Tashqi API-lar** | Copernicus Data Space Ecosystem (Sentinel-2 L2A), Open-Meteo API |
 | **Frontend** | Vanilla JavaScript (ES6+), Leaflet, Leaflet-Draw, Chart.js, Marked.js, DOMPurify |
-| **Dizayn Tizimi** | Modern Vanilla CSS (Glassmorphism, Responsive Grid & Flexbox, Tailored HSL) |
+| **Dizayn Tizimi** | Modern Vanilla CSS (Sonar Radar Marker, Glassmorphism, Responsive Grid & Flexbox) |
 | **Xavfsizlik & Test** | Pure ASGI Security Headers, Sensitive Data Log Masking, PyTest (61 test) |
-
 
 ---
 
-## 6. Ma’lumotlar Bazasi Sxemasi (Schema v5)
+## 6. Ma’lumotlar Bazasi Sxemasi (Schema v6)
 
 Loyiha quyidagi 10 ta jadvallardan iborat relying bazaga ega:
 
@@ -211,14 +210,14 @@ Loyiha quyidagi 10 ta jadvallardan iborat relying bazaga ega:
    - `public_id TEXT NOT NULL UNIQUE` (8 xonali kichik harf va raqamli ID, masalan: `r1ntw4h8`)
    - `geometry_json TEXT`, `geometry_hash TEXT UNIQUE`, `area_hectares REAL`
    - `crop_name TEXT`, `planted_on TEXT`, `growth_stage TEXT`, `created_at TEXT`, `updated_at TEXT`
-2. **`acquisitions`**: Sentinel-2 tasvirlari sanasi, mahsulot ID, reviziya kaliti, bulutlilik ko‘rsatkichi.
+2. **`acquisitions`**: Sentinel-2 tasvirlari sanasi (oxirgi 14 kunlik oyna), mahsulot ID, reviziya kaliti, bulutlilik ko‘rsatkichi.
 3. **`index_values`**: Har bir tasvir va indeks bo‘yicha hisoblangan `mean_value`, `min_value`, `median_value`, `max_value`.
 4. **`artifacts`**: Qatlamlarning PNG render tasvirlari, koordinata bounding boxlari (`bbox_json`), kenglik va balandligi.
-5. **`recommendations`**: AI va ekspert agronomik tavsiyalari (Qizil, Sariq, Yashil guruhlar).
+5. **`recommendations`**: AI va ekspert agronomik tavsiyalari (Qizil, Sariq, Yashil guruhlar va anomaliya hisoboti).
 6. **`field_chat_messages`**: Dala bo‘yicha yozishmalar tarixi (role, content, RAG kitob manbalari, vaqti).
 7. **`field_chat_summaries`**: Dala muloqotlarining lo‘nda, qisqa xulosasi (Summary) va xabarlar soni.
-8. **`rag_documents`**: Bazaga kiritilgan PDF kitoblar (nomi, fayl yo‘li, xesh, sahifalar soni, bo‘laklar soni).
-9. **`rag_chunks`**: Kitoblardan ajratilgan matn bo‘laklari va 384 o‘lchamli vektorlar (`embedding BLOB`).
+8. **`rag_documents`**: Bazaga kiritilgan PDF kitoblar (`is_active`, `embedding_model`, `embedding_dim`, nomi, fayl yo‘li, sahifalar va bo‘laklar soni).
+9. **`rag_chunks`**: Kitoblardan ajratilgan matn bo‘laklari va 768 o‘lchamli vektorlar (`embedding BLOB`).
 10. **`yield_predictions`**: Hosildorlik bashorati tarixi (model, $t/ga$, jami tonna, top parametrlar, fenologiya).
 
 ---
@@ -230,10 +229,10 @@ Loyiha quyidagi 10 ta jadvallardan iborat relying bazaga ega:
 - `GET /api/fields` — Barcha saqlangan dalalar ro‘yxati.
 - `GET /api/fields/{id}` — Dala tafsilotlari (id yoki 8 xonali public_id orqali).
 
-### Sun’iy Yo‘ldosh Tahlili
-- `POST /api/fields/{id}/analyze` — Sentinel Hub’dan eng yangi 5 ta tasvirni yuklash va indekslarni hisoblash.
+### Sun’iy Yo‘ldosh Tahlili & Radar Hotspot
+- `POST /api/fields/{id}/analyze` — Oxirgi 14 kunlik Sentinel Hub tasvirlarini yuklash va 10+ indekslarni hisoblash.
 - `GET /api/fields/{id}/acquisitions` — Dalaning barcha mavjud kuzatuvlari.
-- `GET /api/fields/{id}/acquisitions/{acq_id}/artifacts` — Qatlamlar statistikasi va rasm havolalari.
+- `GET /api/fields/{id}/acquisitions/{acq_id}/artifacts` — Qatlamlar statistikasi, rasm havolalari va eng past NDRE o'chog'ining `hotspot_coordinates` [lat, lon] qiymati.
 - `GET /api/fields/{id}/acquisitions/{acq_id}/images/{layer}` — Qatlamning PNG tasvirini olish (RGB, NDVI, NDMI, NDRE, EVI, BSI, QA).
 - `GET /api/fields/{id}/annual-metrics?year=2026` — Yillik indekslar dinamikasi.
 - `POST /api/fields/{id}/historical-metrics` — Boshlang‘ich sanadan boshlab tarixiy tasvirlarni yuklash.
@@ -243,7 +242,11 @@ Loyiha quyidagi 10 ta jadvallardan iborat relying bazaga ega:
 - `POST /api/fields/{id}/predict-yield` — 122 ta parametr asosida hosildorlikni hisoblash ($t/ga$, jami tonna, ishonchlilik oralig‘i, top omillar).
 - `GET /api/fields/{id}/yield-latest` — Dalaning oxirgi hosildorlik bashorati.
 
-### RAG Bilimlar Bazasi
+### RAG Bilimlar Bazasi (Ko'p Kitobli Boshqaruv)
+- `GET /api/rag/books` — `data/books/` papkasidagi barcha PDF kitoblar holati (`indexed`, `is_active`, `size_mb`).
+- `POST /api/rag/books/index-file` — Tanlangan PDF kitobni 768-dim model bilan indekslash.
+- `POST /api/rag/books/{id}/toggle` — Kitobni RAG qidiruvi uchun yoqish yoki o'chirish (`is_active`).
+- `POST /api/rag/upload` — Yangi PDF kitobni `data/books/` papkasiga yuklash va avtomatik indekslash.
 - `POST /api/rag/ingest` — PDF kitobni kiritish va embedding hisoblash.
 - `GET /api/rag/documents` — Kiritilgan barcha kitoblar ro‘yxati.
 - `DELETE /api/rag/documents/{id}` — Kitobni bazadan o‘chirish.
@@ -251,7 +254,7 @@ Loyiha quyidagi 10 ta jadvallardan iborat relying bazaga ega:
 ### Chat & Dala Xulosasi
 - `GET /api/fields/{id}/chat/history` — Dala bo‘yicha yozishmalar tarixi.
 - `GET /api/fields/{id}/chat/summary` — Dala muloqotlarining umumlashtirilgan xulosasi.
-- `POST /api/fields/{id}/chat` — RAG, 5 kunlik NDVI va Summary konteksti bilan AI ga savol yuborish.
+- `POST /api/fields/{id}/chat` — Tanlangan faol kitoblar (`selected_book_ids`), 5 kunlik NDVI va Summary konteksti bilan AI ga savol yuborish.
 
 ---
 
@@ -284,3 +287,4 @@ Interfeys va AI muloqot tizimi to‘liq 4 ta tilda ishlaydi:
 - **Ўзбекча (кирилл)** (`uz-cyrl`)
 - **Русский** (`ru`)
 - **English** (`en`)
+

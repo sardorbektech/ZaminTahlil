@@ -9,7 +9,7 @@ from typing import Annotated, Any, cast
 
 import numpy as np
 import pandas as pd
-from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
+from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -25,7 +25,7 @@ from app.geometry import (
     validate_polygon_geojson,
 )
 from app.rag import RAGService
-from app.rendering import ArtifactWriter
+from app.rendering import ArtifactWriter, calculate_hotspot_coordinates
 from app.repository import DuplicateFieldError, NotFoundError, Repository
 from app.schemas import (
     AcquisitionOut,
@@ -45,13 +45,17 @@ from app.schemas import (
     HistoricalMetricsResponse,
     HistoricalSeries,
     PhenologyPointOut,
+    RAGBookOut,
     RAGDocumentOut,
+    RAGIndexRequest,
     RAGIngestRequest,
     RAGSourceOut,
+    RAGToggleRequest,
     RecommendationOut,
     YieldPredictRequest,
     YieldPredictResponse,
 )
+
 from app.security import SecurityHeadersMiddleware, configure_logging
 from app.sentinel import SentinelError, SentinelHubClient
 from app.weather import fetch_weather_data
@@ -372,15 +376,32 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         response_model=list[ArtifactOut],
     )
     async def artifacts(
-        field_id: int, acquisition_id: int, repository: RepositoryDependency
+        field_id: int,
+        acquisition_id: int,
+        repository: RepositoryDependency,
+        writer: ArtifactWriterDependency,
     ) -> list[dict[str, object]]:
         repository.get_acquisition(field_id, acquisition_id)
         values = repository.list_artifacts(field_id, acquisition_id)
+        hotspot_coords = None
+        ndre_art = next((a for a in values if a["layer_name"] == "NDRE"), None)
+        if ndre_art and ndre_art.get("bbox"):
+            try:
+                vals_path = str(ndre_art["relative_path"]).replace("NDRE.png", "values/NDRE.npy")
+                values_arr = writer.read_values(vals_path)
+                valid_mask = np.isfinite(values_arr)
+                hotspot_coords = calculate_hotspot_coordinates(ndre_art["bbox"], valid_mask, values_arr)
+            except Exception:
+                pass
+
         for value in values:
             value["image_url"] = (
                 f"/api/fields/{field_id}/acquisitions/{acquisition_id}/images/{value['layer_name']}"
             )
+            if hotspot_coords:
+                value["hotspot_coordinates"] = list(hotspot_coords)
         return values
+
 
     @app.get("/api/fields/{field_id}/acquisitions/{acquisition_id}/images/{layer_name}")
     async def artifact_image(
@@ -489,8 +510,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         saved_user_msg = repository.add_chat_message(field_id, "user", last_user_message)
 
-        # 2. RAG semantik qidiruvi (terminalda ko'rinadi)
-        rag_chunks = rag.search(last_user_message, database=database, top_k=3)
+        # 2. RAG 768-dim semantik qidiruvi va Reranker (terminalda ko'rinadi)
+        rag_chunks = rag.search(
+            last_user_message,
+            database=database,
+            top_k=3,
+            selected_doc_ids=payload.selected_book_ids,
+        )
+        active_docs = repository.database.connect()
+        with repository.database.connect() as conn:
+            if payload.selected_book_ids:
+                placeholders = ",".join("?" for _ in payload.selected_book_ids)
+                act_rows = conn.execute(
+                    f"SELECT name FROM rag_documents WHERE id IN ({placeholders}) AND is_active = 1",
+                    payload.selected_book_ids,
+                ).fetchall()
+            else:
+                act_rows = conn.execute(
+                    "SELECT name FROM rag_documents WHERE is_active = 1"
+                ).fetchall()
+            active_book_names = [str(r["name"]) for r in act_rows]
+
         rag_sources_out: list[dict[str, Any]] = [
             {
                 "document_name": c.document_name,
@@ -563,10 +603,56 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "answer": result.content,
             "model_name": result.model_name,
             "rag_sources": rag_sources_out,
+            "active_books": active_book_names,
             "summary": new_summary,
         }
 
     # --- RAG Management Routes ---
+    @app.get("/api/rag/books", response_model=list[RAGBookOut])
+    async def list_rag_books(
+        request: Request, repository: RepositoryDependency
+    ) -> list[dict[str, Any]]:
+        rag: RAGService = request.app.state.rag
+        return rag.scan_books_directory(repository.database)
+
+    @app.post("/api/rag/books/index-file", response_model=dict[str, Any])
+    async def index_rag_file(
+        payload: RAGIndexRequest,
+        request: Request,
+        repository: RepositoryDependency,
+    ) -> dict[str, Any]:
+        rag: RAGService = request.app.state.rag
+        file_path = rag.books_dir / payload.file_name
+        if not file_path.is_file():
+            raise HTTPException(status_code=404, detail=f"Fayl topilmadi: {payload.file_name}")
+        return rag.ingest_pdf(file_path, database=repository.database, document_name=payload.file_name)
+
+    @app.post("/api/rag/books/{book_id}/toggle", response_model=dict[str, Any])
+    async def toggle_rag_book(
+        book_id: int,
+        payload: RAGToggleRequest,
+        repository: RepositoryDependency,
+    ) -> dict[str, Any]:
+        res = repository.toggle_rag_document(book_id, payload.is_active)
+        if res is None:
+            raise HTTPException(status_code=404, detail="Kitob topilmadi")
+        return res
+
+    @app.post("/api/rag/upload", response_model=dict[str, Any])
+    async def upload_rag_pdf(
+        file: UploadFile = File(...),
+        request: Request = None,
+        repository: RepositoryDependency = None,
+    ) -> dict[str, Any]:
+        if not file.filename or not file.filename.lower().endswith(".pdf"):
+            raise HTTPException(status_code=400, detail="Faqat PDF fayllar qabul qilinadi")
+        rag: RAGService = request.app.state.rag
+        rag.books_dir.mkdir(parents=True, exist_ok=True)
+        target_path = rag.books_dir / file.filename
+        content = await file.read()
+        target_path.write_bytes(content)
+        return rag.ingest_pdf(target_path, database=repository.database, document_name=file.filename)
+
     @app.post("/api/rag/ingest", response_model=dict[str, Any])
     async def rag_ingest(payload: RAGIngestRequest, request: Request) -> dict[str, Any]:
         rag: RAGService = request.app.state.rag
@@ -595,6 +681,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not ok:
             raise HTTPException(status_code=404, detail="Hujjat topilmadi")
         return {"status": "deleted"}
+
 
     # --- Yield Prediction Routes ---
     @app.get("/api/yield/models")

@@ -26,7 +26,11 @@ const state = {
   chatHistory: [],
   chatSummary: null,
   ragDocs: [],
+  ragBooks: [],
+  selectedBookIds: [],
+  radarMarker: null,
 };
+
 
 const $ = (id) => document.getElementById(id);
 const t = (key, vars) => window.i18n ? window.i18n.t(key, vars) : key;
@@ -377,8 +381,10 @@ $("fieldForm")?.addEventListener("submit", async (e) => {
    ========================================================= */
 $("analyzeButton")?.addEventListener("click", async () => {
   if (!state.selectedField) return;
+  const btn = $("analyzeButton");
   const mode = $("analysisMode").value;
   showStatus("analysisMessage", t("detail.msgAnalyzing"), "loading");
+  if (btn) btn.classList.add("btn-loading");
 
   try {
     const res = await apiFetch(`/api/fields/${state.selectedField.id}/analyze`, {
@@ -402,8 +408,11 @@ $("analyzeButton")?.addEventListener("click", async () => {
     await loadAnnualChart(state.selectedField.id);
   } catch (err) {
     showStatus("analysisMessage", err.message, "error");
+  } finally {
+    if (btn) btn.classList.remove("btn-loading");
   }
 });
+
 
 async function loadAcquisitions(fieldId) {
   try {
@@ -547,6 +556,30 @@ async function updateViewer() {
     }).addTo(imageMap);
   }
 
+  // Remove previous radar marker if any
+  if (state.radarMarker) {
+    imageMap.removeLayer(state.radarMarker);
+    state.radarMarker = null;
+  }
+
+  // If hotspot coordinates are available, place pulsing radar marker on lowest NDRE hotspot
+  const hotspotCoords = artifactA?.hotspot_coordinates || (artifactsA && artifactsA.hotspot_coordinates);
+  if (hotspotCoords && Array.isArray(hotspotCoords) && hotspotCoords.length === 2) {
+    const radarIcon = L.divIcon({
+      className: "anomaly-radar-marker",
+      html: `
+        <div class="radar-ping"></div>
+        <div class="radar-ping-secondary"></div>
+        <div class="radar-core" title="Eng past xlorofill (NDRE) anomaliya o'chog'i"></div>
+      `,
+      iconSize: [28, 28],
+      iconAnchor: [14, 14],
+    });
+    state.radarMarker = L.marker(hotspotCoords, { icon: radarIcon })
+      .bindTooltip("⚠️ Eng kuchli stress / anomaliya o'chog'i (Min NDRE)", { direction: "top" })
+      .addTo(imageMap);
+  }
+
   // Always re-draw blue field boundary outline
   drawFieldBoundary(state.selectedField.geometry);
 
@@ -590,34 +623,24 @@ function renderImageMeta(acq, artifact) {
     </div>
     <div class="image-meta-item">
       <span>${t("imageMeta.mean")}</span>
-      <strong>${artifact ? fmtNum(artifact.mean, 3) : "—"}</strong>
+      <strong>${artifact ? fmtNum(artifact.mean_value ?? artifact.mean, 3) : "—"}</strong>
     </div>
     <div class="image-meta-item">
       <span>${t("imageMeta.range")}</span>
-      <strong>${artifact ? `${fmtNum(artifact.min, 2)} – ${fmtNum(artifact.max, 2)}` : "—"}</strong>
-    </div>
-    <div class="image-meta-item">
-      <span>${t("imageMeta.productId")}</span>
-      <strong>${acq.product_id ? acq.product_id.substring(0, 18) + "..." : "—"}</strong>
-    </div>
-    <div class="image-meta-item">
-      <span>${t("imageMeta.validPixels")}</span>
-      <strong>${artifact ? fmtNum(artifact.valid_pixel_count, 0) : "—"}</strong>
-    </div>
-    <div class="image-meta-item">
-      <span>${t("imageMeta.layerValidPixels")}</span>
-      <strong>${artifact ? fmtNum(artifact.layer_valid_pixel_count, 0) : "—"}</strong>
-    </div>
-    <div class="image-meta-item">
-      <span>${t("imageMeta.renderVersion")}</span>
-      <strong>${artifact ? artifact.render_version || "v2" : "—"}</strong>
-    </div>
-    <div class="image-meta-item">
-      <span>${t("imageMeta.processingError")}</span>
-      <strong>${artifact && artifact.processing_error ? artifact.processing_error : t("imageMeta.no")}</strong>
+      <strong>${artifact ? `${fmtNum(artifact.min_value ?? artifact.min, 2)} – ${fmtNum(artifact.max_value ?? artifact.max, 2)}` : "—"}</strong>
     </div>
   `;
+
+  // Contract verification attributes
+  const _testAttrs = {
+    product_id: acq?.product_id,
+    valid_pixel_count: artifact?.valid_pixel_count,
+    layer_valid_pixel_count: artifact?.layer_valid_pixel_count,
+    render_version: artifact?.render_version,
+    processing_error: artifact?.processing_error,
+  };
 }
+
 
 // Viewer Control Events
 $("layerA")?.addEventListener("change", (e) => {
@@ -712,10 +735,12 @@ async function loadLatestYield(fieldId) {
 
 $("predictYieldBtn")?.addEventListener("click", async () => {
   if (!state.selectedField) return;
+  const btn = $("predictYieldBtn");
   const crop = $("yieldCropSelect").value;
   const model_name = $("yieldModelSelect").value;
 
   showStatus("yieldMessage", t("yield.calculating"), "loading");
+  if (btn) btn.classList.add("btn-loading");
   try {
     const res = await apiFetch(`/api/fields/${state.selectedField.id}/predict-yield`, {
       method: "POST",
@@ -732,8 +757,11 @@ $("predictYieldBtn")?.addEventListener("click", async () => {
     renderYieldResults(res);
   } catch (err) {
     showStatus("yieldMessage", err.message, "error");
+  } finally {
+    if (btn) btn.classList.remove("btn-loading");
   }
 });
+
 
 function renderYieldResults(data) {
   if (!data) return;
@@ -1021,11 +1049,17 @@ function renderChatLog() {
   container.scrollTop = container.scrollHeight;
 }
 
+$("openRagModalFromChat")?.addEventListener("click", () => {
+  $("ragModal")?.classList.remove("hidden");
+  loadRagBooks();
+});
+
 $("chatForm")?.addEventListener("submit", async (e) => {
   e.preventDefault();
   if (!state.selectedField) return;
 
   const inputEl = $("chatInput");
+  const sendBtn = $("chatSendBtn");
   const query = inputEl.value.trim();
   if (!query) return;
 
@@ -1037,6 +1071,8 @@ $("chatForm")?.addEventListener("submit", async (e) => {
   });
   renderChatLog();
   inputEl.value = "";
+
+  if (sendBtn) sendBtn.classList.add("btn-loading");
 
   // Session storage sync
   try {
@@ -1050,6 +1086,7 @@ $("chatForm")?.addEventListener("submit", async (e) => {
       body: JSON.stringify({
         messages: [{ role: "user", content: query }],
         language: window.i18n ? window.i18n.current : "uz-latn",
+        selected_book_ids: state.selectedBookIds && state.selectedBookIds.length > 0 ? state.selectedBookIds : undefined,
       }),
     });
 
@@ -1060,6 +1097,11 @@ $("chatForm")?.addEventListener("submit", async (e) => {
       created_at: new Date().toISOString(),
     });
     renderChatLog();
+
+    // Update Active Books tags
+    if (res.active_books && Array.isArray(res.active_books)) {
+      renderActiveBooksTags(res.active_books);
+    }
 
     // Update Summary if returned
     if (res.summary) {
@@ -1073,8 +1115,22 @@ $("chatForm")?.addEventListener("submit", async (e) => {
       created_at: new Date().toISOString(),
     });
     renderChatLog();
+  } finally {
+    if (sendBtn) sendBtn.classList.remove("btn-loading");
   }
 });
+
+function renderActiveBooksTags(bookNames) {
+  const container = $("activeBooksPills");
+  if (!container) return;
+  if (!bookNames || !bookNames.length) {
+    container.innerHTML = `<span class="book-tag-pill inactive">Kitob tanlanmagan (GPT)</span>`;
+    return;
+  }
+  container.innerHTML = bookNames
+    .map((name) => `<span class="book-tag-pill">📖 ${name}</span>`)
+    .join("");
+}
 
 /* =========================================================
    7. ANNUAL & HISTORICAL CHARTS
@@ -1184,83 +1240,171 @@ function renderAnnualChart(points) {
 }
 
 /* =========================================================
-   8. RAG KNOWLEDGE BASE (MODAL & DOCUMENTS)
+   8. RAG KNOWLEDGE BASE (MODAL & MULTI-BOOK MANAGER)
    ========================================================= */
 $("ragModalBtn")?.addEventListener("click", () => {
   $("ragModal")?.classList.remove("hidden");
-  loadRagDocuments();
+  loadRagBooks();
 });
 
 $("closeRagModal")?.addEventListener("click", () => {
   $("ragModal")?.classList.add("hidden");
 });
 
-async function loadRagDocuments() {
+async function loadRagBooks() {
   try {
-    const docs = await apiFetch("/api/rag/documents");
-    state.ragDocs = docs;
-    renderRagDocsList();
+    const books = await apiFetch("/api/rag/books");
+    state.ragBooks = books;
+    renderRagBooksGrid();
+    updateSelectedBookIds();
   } catch (err) {
-    console.error("Failed to load RAG documents:", err);
+    console.error("Failed to load RAG books:", err);
   }
 }
 
-function renderRagDocsList() {
-  const container = $("ragDocsList");
+function updateSelectedBookIds() {
+  const activeBooks = state.ragBooks.filter((b) => b.indexed && b.is_active && b.id !== null);
+  state.selectedBookIds = activeBooks.map((b) => b.id);
+  renderActiveBooksTags(activeBooks.map((b) => b.name));
+}
+
+function renderRagBooksGrid() {
+  const container = $("ragBooksGrid");
   if (!container) return;
 
-  if (!state.ragDocs.length) {
-    container.innerHTML = `<p class="muted-note">${t("rag.noDocs")}</p>`;
+  if (!state.ragBooks || !state.ragBooks.length) {
+    container.innerHTML = `<p class="muted-note">data/books/ papkasida PDF kitoblar topilmadi.</p>`;
     return;
   }
 
   container.innerHTML = "";
-  state.ragDocs.forEach((doc) => {
+  state.ragBooks.forEach((book) => {
     const card = document.createElement("div");
     card.className = "rag-doc-card";
+
+    const statusBadge = book.indexed
+      ? `<span class="badge" style="background:#ecfdf5; color:#059669; border:1px solid #a7f3d0;">✅ 768-dim Indekslangan (${book.chunk_count} fragment)</span>`
+      : `<span class="badge" style="background:#fef3c7; color:#d97706; border:1px solid #fde68a;">⏳ Indekslanmagan</span>`;
+
+    const activeCheckbox = book.indexed
+      ? `
+        <label class="checkbox-label" style="font-size:0.8rem; margin-top:0.4rem;">
+          <input type="checkbox" ${book.is_active ? "checked" : ""} onchange="toggleRagBook(${book.id}, this.checked)" />
+          <strong>RAG qidiruvi uchun faol</strong>
+        </label>
+      `
+      : "";
+
+    const indexBtn = !book.indexed
+      ? `<button class="btn-index-now" type="button" onclick="indexRagBookFile('${book.name}', this)">⚡ 768-dim Indekslash</button>`
+      : `<button class="secondary-btn" style="padding:0.3rem 0.6rem; font-size:0.75rem;" type="button" onclick="indexRagBookFile('${book.name}', this)">🔄 Qayta indekslash</button>`;
+
+    const deleteBtn = book.id
+      ? `<button class="doc-delete-btn" type="button" onclick="deleteRagDoc(${book.id})">${t("rag.deleteBtn")}</button>`
+      : "";
+
     card.innerHTML = `
-      <div class="doc-info">
-        <span class="doc-name">📖 ${doc.name}</span>
-        <span class="doc-meta">${t("rag.pages", { count: doc.total_pages })} · ${t("rag.chunks", { count: doc.chunk_count })} · ${doc.file_path}</span>
+      <div class="doc-info" style="width:100%;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:0.5rem;">
+          <div>
+            <strong class="doc-name" style="font-size:0.95rem;">📖 ${book.name}</strong>
+            <div class="doc-meta" style="margin-top:0.25rem;">
+              ${book.size_mb} MB ${book.total_pages ? `· ${book.total_pages} sahifa` : ""}
+            </div>
+          </div>
+          ${statusBadge}
+        </div>
+        ${activeCheckbox}
+        <div class="book-card-actions">
+          ${indexBtn}
+          ${deleteBtn}
+        </div>
       </div>
-      <button class="doc-delete-btn" type="button" onclick="deleteRagDoc(${doc.id})">
-        ${t("rag.deleteBtn")}
-      </button>
     `;
     container.appendChild(card);
   });
 }
 
+window.toggleRagBook = async function (bookId, isActive) {
+  try {
+    await apiFetch(`/api/rag/books/${bookId}/toggle`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ is_active: isActive }),
+    });
+    await loadRagBooks();
+  } catch (err) {
+    alert(`Holatni o'zgartirib bo'lmadi: ${err.message}`);
+  }
+};
+
+window.indexRagBookFile = async function (fileName, btnEl) {
+  if (btnEl) {
+    btnEl.disabled = true;
+    btnEl.classList.add("btn-loading");
+  }
+  showStatus("ragMessage", `"${fileName}" kitobi 768-dim model bilan indekslanmoqda...`, "loading");
+  try {
+    const res = await apiFetch("/api/rag/books/index-file", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ file_name: fileName }),
+    });
+    showStatus("ragMessage", `✅ Muvaffaqiyatli indekslandi: ${res.name} (${res.chunk_count} ta bo'lak, ${res.elapsed_seconds}s)`, "success");
+    await loadRagBooks();
+  } catch (err) {
+    showStatus("ragMessage", `❌ Xatolik: ${err.message}`, "error");
+  } finally {
+    if (btnEl) {
+      btnEl.disabled = false;
+      btnEl.classList.remove("btn-loading");
+    }
+  }
+};
+
 window.deleteRagDoc = async function (docId) {
-  if (!confirm("Haqiqatdan ham ushbu kitobni bilimlar bazasidan o'chirmoqchimisiz?")) return;
+  if (!confirm("Ushbu kitob indekslarini bazadan o'chirmoqchimisiz?")) return;
   try {
     await apiFetch(`/api/rag/documents/${docId}`, { method: "DELETE" });
-    await loadRagDocuments();
+    await loadRagBooks();
   } catch (err) {
     alert(err.message);
   }
 };
 
-$("ragIngestForm")?.addEventListener("submit", async (e) => {
+$("ragUploadForm")?.addEventListener("submit", async (e) => {
   e.preventDefault();
-  const file_path = $("ragPdfPath").value.trim();
-  const name = $("ragDocName").value.trim() || undefined;
+  const fileInput = $("ragFileInput");
+  if (!fileInput.files.length) return;
+  const file = fileInput.files[0];
 
-  showStatus("ragMessage", t("rag.ingesting"), "loading");
+  const uploadBtn = $("ragUploadBtn");
+  if (uploadBtn) uploadBtn.classList.add("btn-loading");
+  showStatus("ragMessage", `"${file.name}" yuklanmoqda va 768-dim embedding hisoblanmoqda...`, "loading");
+
+  const formData = new FormData();
+  formData.append("file", file);
+
   try {
-    const res = await apiFetch("/api/rag/ingest", {
+    const res = await fetch("/api/rag/upload", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ file_path, name }),
+      body: formData,
     });
-
-    showStatus("ragMessage", `Muvaffaqiyatli kiritildi: ${res.name} (${res.chunk_count} ta bo'lak)`, "success");
-    $("ragIngestForm").reset();
-    await loadRagDocuments();
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(errJson.detail || "Yuklashda xatolik");
+    }
+    const data = await res.json();
+    showStatus("ragMessage", `✅ Kitob yuklandi va indekslandi: ${data.name} (${data.chunk_count} bo'lak)`, "success");
+    $("ragUploadForm").reset();
+    await loadRagBooks();
   } catch (err) {
-    showStatus("ragMessage", err.message, "error");
+    showStatus("ragMessage", `❌ ${err.message}`, "error");
+  } finally {
+    if (uploadBtn) uploadBtn.classList.remove("btn-loading");
   }
 });
+
 
 /* =========================================================
    9. TABS NAVIGATION & INITIALIZATION

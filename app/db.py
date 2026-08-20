@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -103,6 +103,9 @@ CREATE TABLE IF NOT EXISTS rag_documents (
     file_hash TEXT NOT NULL,
     total_pages INTEGER NOT NULL,
     chunk_count INTEGER NOT NULL,
+    embedding_model TEXT NOT NULL DEFAULT 'nomic-ai/nomic-embed-text-v1.5',
+    embedding_dim INTEGER NOT NULL DEFAULT 768,
+    is_active INTEGER NOT NULL DEFAULT 1 CHECK(is_active IN (0, 1)),
     created_at TEXT NOT NULL
 );
 
@@ -182,11 +185,24 @@ class Database:
                     pid = "".join(secrets.choice(alphabet) for _ in range(8))
                     connection.execute("UPDATE fields SET public_id = ? WHERE id = ?", (pid, r["id"]))
 
+            # RAG Documents Schema v6 migrations
+            rag_doc_columns = {
+                str(row["name"])
+                for row in connection.execute("PRAGMA table_info(rag_documents)").fetchall()
+            }
+            if "is_active" not in rag_doc_columns:
+                connection.execute("ALTER TABLE rag_documents ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1")
+            if "embedding_model" not in rag_doc_columns:
+                connection.execute("ALTER TABLE rag_documents ADD COLUMN embedding_model TEXT NOT NULL DEFAULT 'nomic-ai/nomic-embed-text-v1.5'")
+            if "embedding_dim" not in rag_doc_columns:
+                connection.execute("ALTER TABLE rag_documents ADD COLUMN embedding_dim INTEGER NOT NULL DEFAULT 768")
+
             connection.execute(
                 "INSERT OR IGNORE INTO schema_version(version, applied_at) "
                 "VALUES (?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
                 (SCHEMA_VERSION,),
             )
+
 
 
     @contextmanager

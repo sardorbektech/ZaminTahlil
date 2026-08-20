@@ -162,8 +162,9 @@ class AnalysisService:
             if render_artifacts:
                 layer_images = {"RGB": render_rgb(raster), "QA": render_qa(raster)}
                 layer_images.update(
-                    {name: render_heatmap(index_values[name], valid) for name in INDEX_NAMES}
+                    {name: render_heatmap(index_values[name], valid, layer_name=name) for name in INDEX_NAMES}
                 )
+
                 for layer_name, image in layer_images.items():
                     relative = self.artifacts.relative_path(
                         int(field["id"]), item.product_id, item.revision_key, layer_name

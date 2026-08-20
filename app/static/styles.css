@@ -1615,6 +1615,198 @@ button:disabled {
 }
 
 /* =========================================================
+   7. ANOMALY RADAR MARKER & CSS PING ANIMATION
+   ========================================================= */
+.anomaly-radar-marker {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.radar-core {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: #ef4444;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 1);
+  z-index: 10;
+}
+
+.radar-ping {
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  background: rgba(239, 68, 68, 0.25);
+  border: 1.5px solid rgba(239, 68, 68, 0.85);
+  border-radius: 50%;
+  animation: radarWave 1.8s cubic-bezier(0, 0.2, 0.8, 1) infinite;
+}
+
+.radar-ping-secondary {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  background: rgba(239, 68, 68, 0.2);
+  border: 1px solid rgba(239, 68, 68, 0.7);
+  border-radius: 50%;
+  animation: radarWave 1.8s cubic-bezier(0, 0.2, 0.8, 1) infinite;
+  animation-delay: 0.5s;
+}
+
+@keyframes radarWave {
+  0% {
+    transform: scale(0.3);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+
+/* =========================================================
+   8. CHAT BOOK SELECTOR BAR & RAG BADGES
+   ========================================================= */
+.chat-book-selector-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: var(--bg-card-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin-bottom: 0.75rem;
+}
+
+.active-books-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+  color: var(--ink-secondary);
+  flex-wrap: wrap;
+}
+
+.active-books-tags {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.book-tag-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.55rem;
+  background: rgba(5, 150, 105, 0.12);
+  color: var(--brand-emerald);
+  border: 1px solid rgba(5, 150, 105, 0.3);
+  border-radius: 12px;
+  font-size: 0.76rem;
+  font-weight: 500;
+}
+
+.book-tag-pill.inactive {
+  background: var(--bg-card);
+  color: var(--ink-muted);
+  border-color: var(--border);
+}
+
+.manage-rag-link-btn {
+  background: none;
+  border: 1px dashed var(--border-focus);
+  color: var(--brand-emerald);
+  padding: 0.3rem 0.65rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+
+.manage-rag-link-btn:hover {
+  background: rgba(5, 150, 105, 0.08);
+  border-style: solid;
+}
+
+.book-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.btn-index-now {
+  padding: 0.35rem 0.75rem;
+  font-size: 0.78rem;
+  background: var(--brand-emerald);
+  color: #ffffff;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-index-now:hover {
+  background: var(--brand-emerald-dark);
+}
+
+/* Loading animations */
+.btn-loading {
+  position: relative;
+  pointer-events: none;
+  opacity: 0.8;
+}
+
+.btn-loading::after {
+  content: "";
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin-left: 8px;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-radius: 50%;
+  border-top-color: #ffffff;
+  animation: spin 0.7s linear infinite;
+  vertical-align: middle;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.loading-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem;
+  padding: 0.75rem;
+  background: rgba(5, 150, 105, 0.08);
+  border: 1px solid rgba(5, 150, 105, 0.25);
+  border-radius: var(--radius-sm);
+  color: var(--brand-emerald);
+  font-size: 0.85rem;
+  font-weight: 500;
+  margin-bottom: 0.75rem;
+}
+
+.loading-spinner-circle {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(5, 150, 105, 0.3);
+  border-radius: 50%;
+  border-top-color: var(--brand-emerald);
+  animation: spin 0.7s linear infinite;
+}
+
+/* =========================================================
    6. RESPONSIVE BREAKPOINTS
    ========================================================= */
 @media (max-width: 1100px) {

@@ -215,18 +215,27 @@ class SentinelHubClient:
             headers = {"Authorization": f"Bearer {token}"}
             return await self._request(method, url, headers=headers, **kwargs)
 
-    async def catalog(self, geometry: dict[str, Any]) -> list[CatalogItem]:
-        now = datetime.now(UTC).isoformat()
+    async def catalog(self, geometry: dict[str, Any], days: int = 14) -> list[CatalogItem]:
+        now_dt = datetime.now(UTC)
+        from_dt = now_dt - timedelta(days=days)
+        now_str = now_dt.isoformat()
+        from_str = from_dt.isoformat()
         payload: dict[str, Any] = {
             "collections": ["sentinel-2-l2a"],
-            "datetime": f"../{now}",
+            "datetime": f"{from_str}/{now_str}",
             "intersects": geometry,
             "limit": MAX_STORED_ACQUISITIONS,
             # CDSE katalogi "sortby" ni qabul qilmaydi; saralash quyida Python
             # tomonida acquired_at bo'yicha bajariladi.
             "fields": {"include": ["id", "geometry", "properties"], "exclude": []},
         }
-        logger.info("Sentinel catalog latest request limit=%d", MAX_STORED_ACQUISITIONS)
+        logger.info(
+            "Sentinel catalog request (last %d days) window=%s/%s limit=%d",
+            days,
+            from_str,
+            now_str,
+            MAX_STORED_ACQUISITIONS,
+        )
         response = await self._authorized_request("POST", self.catalog_url, json=payload)
         found: list[CatalogItem] = []
         for feature in response.json().get("features", []):
@@ -236,6 +245,7 @@ class SentinelHubClient:
             if not isinstance(acquired_at, str) or not isinstance(product_id, str):
                 continue
             cloud = properties.get("eo:cloud_cover")
+
             found.append(
                 CatalogItem(
                     acquired_at=acquired_at,
@@ -258,6 +268,7 @@ class SentinelHubClient:
         ]
         logger.info("Sentinel catalog returned latest_count=%d", len(latest))
         return sorted(latest, key=lambda item: item.acquired_at)
+
 
     @staticmethod
     def _catalog_items(payload: dict[str, Any]) -> list[CatalogItem]:

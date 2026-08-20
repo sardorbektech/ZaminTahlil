@@ -114,6 +114,7 @@ class ArtifactOut(BaseModel):
     median_value: float | None = None
     max_value: float | None = None
     layer_valid_pixel_count: int | None = None
+    hotspot_coordinates: list[float] | None = None
 
 
 class AnnualPoint(BaseModel):
@@ -143,6 +144,13 @@ class HistoricalMetricsResponse(BaseModel):
     series: HistoricalSeries
 
 
+class ArtifactsResponse(BaseModel):
+    field_id: int
+    acquisition: AcquisitionOut
+    artifacts: list[ArtifactOut]
+    hotspot_coordinates: list[float] | None = None
+
+
 # --- RAG Schemas ---
 class RAGIngestRequest(BaseModel):
     pdf_path: str = Field(min_length=1)
@@ -166,6 +174,26 @@ class RAGSourceOut(BaseModel):
     text: str
 
 
+class RAGBookOut(BaseModel):
+    id: int | None = None
+    name: str
+    file_path: str
+    size_mb: float
+    total_pages: int | None = None
+    chunk_count: int = 0
+    embedding_model: str = "nomic-ai/nomic-embed-text-v1.5"
+    is_active: bool = True
+    indexed: bool = False
+
+
+class RAGIndexRequest(BaseModel):
+    file_name: str
+
+
+class RAGToggleRequest(BaseModel):
+    is_active: bool
+
+
 # --- Chat Schemas ---
 class ChatMessage(BaseModel):
     role: Literal["user", "assistant"]
@@ -180,12 +208,14 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     messages: list[ChatMessage] = Field(min_length=1, max_length=MAX_CHAT_MESSAGES)
     language: Literal["uz-latn", "uz-cyrl", "ru", "en"] | None = None
+    selected_book_ids: list[int] | None = None
 
 
 class ChatResponse(BaseModel):
     answer: str
     model_name: str
     rag_sources: list[RAGSourceOut] = Field(default_factory=list)
+    active_books: list[str] = Field(default_factory=list)
     summary: str | None = None
 
 
