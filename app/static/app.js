@@ -1447,6 +1447,87 @@ $("ragUploadForm")?.addEventListener("submit", async (e) => {
 
 
 /* =========================================================
+   PURGE DATABASE HANDLERS
+   ========================================================= */
+$("purgeDbBtn")?.addEventListener("click", () => {
+  if ($("purgePasswordInput")) $("purgePasswordInput").value = "";
+  if ($("purgeMessage")) {
+    $("purgeMessage").textContent = "";
+    $("purgeMessage").className = "status-msg";
+  }
+  $("purgeModal")?.classList.remove("hidden");
+});
+
+$("closePurgeModalBtn")?.addEventListener("click", () => {
+  $("purgeModal")?.classList.add("hidden");
+});
+
+$("cancelPurgeBtn")?.addEventListener("click", () => {
+  $("purgeModal")?.classList.add("hidden");
+});
+
+$("confirmPurgeBtn")?.addEventListener("click", async () => {
+  const pwd = $("purgePasswordInput")?.value.trim() || "";
+  if (pwd.toLowerCase() !== "roziman") {
+    showStatus("purgeMessage", "❌ Parol noto'g'ri. Tasdiqlash uchun 'roziman' so'zini kiriting.", "error");
+    return;
+  }
+
+  const btn = $("confirmPurgeBtn");
+  if (btn) btn.classList.add("btn-loading");
+  showStatus("purgeMessage", "Baza tozalanmoqda...", "loading");
+
+  try {
+    const res = await apiFetch("/api/database/purge-fields", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ confirmation: pwd }),
+    });
+
+    showStatus("purgeMessage", `✅ ${res.message}`, "success");
+
+    // Clear client storages
+    try {
+      localStorage.removeItem("zamintahlil_last_field");
+      sessionStorage.clear();
+    } catch {}
+
+    // Reset state
+    state.fields = [];
+    state.selectedField = null;
+    state.chatHistory = [];
+    state.selectedAcquisition = null;
+    state.draftGeometry = null;
+
+    if (fieldsFeatureGroup) fieldsFeatureGroup.clearLayers();
+    if (hotspotGroup) hotspotGroup.clearLayers();
+    if (drawnItems) drawnItems.clearLayers();
+
+    renderSavedFieldsList();
+    if ($("fieldCount")) $("fieldCount").textContent = "0";
+    if ($("fieldsCountBadge")) $("fieldsCountBadge").textContent = "0";
+    if ($("totalAreaStat")) $("totalAreaStat").textContent = "0 ga";
+    if ($("totalFieldsStat")) $("totalFieldsStat").textContent = "0";
+
+    $("fieldForm")?.reset();
+    if ($("draftArea")) $("draftArea").textContent = t("composer.areaPlaceholder");
+    if ($("selectionState")) $("selectionState").textContent = t("story.fieldNotSelected");
+
+    $("detail")?.classList.add("hidden");
+    $("emptyState")?.classList.remove("hidden");
+
+    setTimeout(() => {
+      $("purgeModal")?.classList.add("hidden");
+    }, 1000);
+  } catch (err) {
+    showStatus("purgeMessage", `❌ ${err.message}`, "error");
+  } finally {
+    if (btn) btn.classList.remove("btn-loading");
+  }
+});
+
+
+/* =========================================================
    9. TABS NAVIGATION & INITIALIZATION
    ========================================================= */
 document.querySelectorAll(".tab-btn").forEach((btn) => {

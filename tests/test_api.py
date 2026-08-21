@@ -59,3 +59,20 @@ async def test_field_api_area_duplicate_and_missing_credentials(
             "/api/fields/1/historical-metrics", json={"from_date": "2100-01-01"}
         )
         assert future.status_code == 422
+
+        # Purge endpoint tests
+        wrong_pwd = await client.post(
+            "/api/database/purge-fields", json={"confirmation": "wrong"}
+        )
+        assert wrong_pwd.status_code == 400
+
+        correct_pwd = await client.post(
+            "/api/database/purge-fields", json={"confirmation": "roziman"}
+        )
+        assert correct_pwd.status_code == 200
+        assert correct_pwd.json()["success"] is True
+
+        # Verify fields table is empty
+        fields_resp = await client.get("/api/fields")
+        assert fields_resp.status_code == 200
+        assert len(fields_resp.json()) == 0

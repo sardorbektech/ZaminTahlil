@@ -351,7 +351,6 @@ button:disabled {
 }
 
 .counter-badge {
-  margin-left: auto;
   background: var(--brand-surface);
   color: var(--brand-dark);
   font-weight: 700;
@@ -359,6 +358,27 @@ button:disabled {
   padding: 0.15rem 0.55rem;
   border-radius: 999px;
   border: 1px solid rgba(5, 150, 105, 0.2);
+}
+
+.purge-db-btn {
+  margin-left: auto;
+  background: rgba(220, 38, 38, 0.08);
+  color: #dc2626;
+  border: 1px solid rgba(220, 38, 38, 0.25);
+  border-radius: 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.2rem 0.55rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.purge-db-btn:hover {
+  background: #dc2626;
+  color: #ffffff;
+  border-color: #dc2626;
+  box-shadow: 0 2px 4px rgba(220, 38, 38, 0.2);
 }
 
 .fields-cards-container {

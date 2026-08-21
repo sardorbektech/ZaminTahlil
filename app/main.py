@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import shutil
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -45,6 +46,7 @@ from app.schemas import (
     HistoricalMetricsResponse,
     HistoricalSeries,
     PhenologyPointOut,
+    PurgeDatabaseRequest,
     RAGBookOut,
     RAGDocumentOut,
     RAGIndexRequest,
@@ -737,6 +739,46 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not ok:
             raise HTTPException(status_code=404, detail="Hujjat topilmadi")
         return {"status": "deleted"}
+
+    # --- Database Purge Route ---
+    @app.post("/api/database/purge-fields", response_model=dict[str, Any])
+    async def purge_fields_database(
+        payload: PurgeDatabaseRequest,
+        repository: RepositoryDependency,
+    ) -> dict[str, Any]:
+        if payload.confirmation.strip().lower() != "roziman":
+            raise HTTPException(
+                status_code=400,
+                detail="Noto'g'ri parol. Tozalash uchun 'roziman' so'zini kiriting.",
+            )
+
+        with repository.database.connect() as conn:
+            tables = [
+                "fields",
+                "acquisitions",
+                "index_values",
+                "artifacts",
+                "recommendations",
+                "field_chat_messages",
+                "field_chat_summaries",
+            ]
+            for table in tables:
+                conn.execute(f"DELETE FROM {table}")
+
+        # Clear generated raster artifacts
+        artifacts_dir = Path("data/artifacts")
+        if artifacts_dir.exists():
+            for item in artifacts_dir.iterdir():
+                if item.is_dir():
+                    shutil.rmtree(item, ignore_errors=True)
+                elif item.is_file():
+                    item.unlink(missing_ok=True)
+
+        logger.warning("Fields database and artifacts purged by user confirmation.")
+        return {
+            "success": True,
+            "message": "Barcha dala maydonlari va tahlillar bazadan to'liq tozalandi",
+        }
 
 
     # --- Yield Prediction Routes ---

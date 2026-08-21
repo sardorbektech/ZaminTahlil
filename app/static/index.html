@@ -87,9 +87,14 @@
           <!-- Saved Fields Section -->
           <div class="sidebar-section">
             <div class="section-title-row">
-              <span class="icon">🌾</span>
-              <h3 data-i18n="nav.fieldsTitle">Saqlangan dalalar</h3>
-              <span id="fieldsCountBadge" class="counter-badge">0</span>
+              <div style="display: flex; align-items: center; gap: 0.4rem;">
+                <span class="icon">🌾</span>
+                <h3 data-i18n="nav.fieldsTitle">Saqlangan dalalar</h3>
+                <span id="fieldsCountBadge" class="counter-badge">0</span>
+              </div>
+              <button id="purgeDbBtn" class="purge-db-btn" type="button" title="Barcha dalalarni tozalash (Parol: roziman)">
+                🗑️ Tozalash
+              </button>
             </div>
             <div id="savedFieldsList" class="fields-cards-container">
               <p class="muted-note" data-i18n="nav.noFields">Hozircha saqlangan dala yo'q. Xaritada polygon chizing.</p>
@@ -576,8 +581,44 @@
       </div>
     </div>
 
-
-    <!-- Scripts -->
+    <!-- 4. PURGE CONFIRMATION MODAL -->
+    <div id="purgeModal" class="modal-backdrop-overlay hidden" aria-hidden="true" role="dialog">
+      <div class="modal-card-window" style="max-width: 480px;">
+        <div class="modal-header-bar" style="border-bottom-color: rgba(220, 38, 38, 0.2);">
+          <div class="modal-header-text">
+            <span class="modal-tag" style="background: rgba(220, 38, 38, 0.12); color: #dc2626; border-color: rgba(220, 38, 38, 0.3);">BAZANI TOZALASH</span>
+            <h2>Dala Bazasini O'chirish</h2>
+          </div>
+          <button id="closePurgeModalBtn" class="modal-close-icon" type="button" aria-label="Yopish">✕</button>
+        </div>
+        <div class="modal-scroll-body" style="padding: 1.5rem;">
+          <p style="font-size: 0.88rem; color: var(--ink-secondary); line-height: 1.5; margin-bottom: 1rem;">
+            ⚠️ <strong>Diqqat:</strong> Barcha saqlangan dala maydonlari, sun'iy yo'ldosh tahlillari, xaritalar va chat xabarlari bazadan butunlay o'chiriladi. (Agronom kitoblari saqlanadi).
+          </p>
+          <div class="form-group">
+            <label for="purgePasswordInput" style="font-weight: 600; font-size: 0.85rem;">
+              O'chirishni tasdiqlash uchun parolni kiriting (<strong>roziman</strong>):
+            </label>
+            <input
+              id="purgePasswordInput"
+              type="text"
+              placeholder="roziman"
+              autocomplete="off"
+              style="width: 100%; padding: 0.65rem 0.85rem; border-radius: 6px; border: 1px solid var(--border); font-size: 0.95rem; margin-top: 0.35rem;"
+            />
+          </div>
+          <div id="purgeMessage" class="status-msg" role="status" style="margin-top: 0.75rem;"></div>
+        </div>
+        <div style="display: flex; justify-content: flex-end; gap: 0.75rem; padding: 1rem 1.5rem; border-top: 1px solid var(--border); background: var(--bg-card-muted);">
+          <button id="cancelPurgeBtn" class="secondary-btn" type="button" style="padding: 0.55rem 1rem; border-radius: 6px; font-weight: 600; cursor: pointer;">
+            Bekor qilish
+          </button>
+          <button id="confirmPurgeBtn" class="danger-btn" type="button" style="background: #dc2626; color: #fff; border: none; padding: 0.55rem 1.25rem; border-radius: 6px; font-weight: 700; cursor: pointer; transition: all 0.2s ease;">
+            🗑️ To'liq Tozalash
+          </button>
+        </div>
+      </div>
+    </div>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>

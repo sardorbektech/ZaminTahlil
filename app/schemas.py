@@ -283,3 +283,8 @@ class YieldPredictResponse(BaseModel):
     phenology_timeline: list[PhenologyPointOut]
     features_count: int
     execution_time_sec: float
+
+
+# --- Database Purge Schemas ---
+class PurgeDatabaseRequest(BaseModel):
+    confirmation: str
