@@ -1062,6 +1062,16 @@ function renderChatLog() {
   container.scrollTop = container.scrollHeight;
 }
 
+// --- RAG Mode & Management Event Listeners ---
+const ragModeSelect = $("chatRagModeSelect");
+if (ragModeSelect) {
+  const savedRagMode = localStorage.getItem("zamintahlil_rag_mode") || "advanced";
+  ragModeSelect.value = savedRagMode;
+  ragModeSelect.addEventListener("change", (e) => {
+    localStorage.setItem("zamintahlil_rag_mode", e.target.value);
+  });
+}
+
 $("openRagModalFromChat")?.addEventListener("click", () => {
   $("ragModal")?.classList.remove("hidden");
   loadRagBooks();
@@ -1075,6 +1085,8 @@ $("chatForm")?.addEventListener("submit", async (e) => {
   const sendBtn = $("chatSendBtn");
   const query = inputEl.value.trim();
   if (!query) return;
+
+  const selectedRagMode = $("chatRagModeSelect")?.value || "advanced";
 
   // Optimistic UI push
   state.chatHistory.push({
@@ -1100,7 +1112,7 @@ $("chatForm")?.addEventListener("submit", async (e) => {
         messages: [{ role: "user", content: query }],
         language: window.i18n ? window.i18n.current : "uz-latn",
         selected_book_ids: state.selectedBookIds && state.selectedBookIds.length > 0 ? state.selectedBookIds : undefined,
-        rag_mode: "all_in_one",
+        rag_mode: selectedRagMode,
       }),
     });
 

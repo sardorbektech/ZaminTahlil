@@ -136,7 +136,7 @@ def test_chat_endpoint_with_rag_and_summary(tmp_path: Path) -> None:
             json={
                 "messages": [{"role": "user", "content": "Paxtaga qanday o'g'it berish kerak?"}],
                 "language": "uz-latn",
-                "rag_mode": "all_in_one",
+                "rag_mode": "advanced",
             },
         )
         assert chat_resp.status_code == 200
@@ -146,11 +146,23 @@ def test_chat_endpoint_with_rag_and_summary(tmp_path: Path) -> None:
         assert "rag_strategy" in res_data
         assert "rag_source_title" in res_data
 
+        # Direct LLM mode test
+        chat_llm_resp = client.post(
+            f"/api/fields/{field_id}/chat",
+            json={
+                "messages": [{"role": "user", "content": "Oddiy savol"}],
+                "language": "uz-latn",
+                "rag_mode": "direct_llm",
+            },
+        )
+        assert chat_llm_resp.status_code == 200
+        assert chat_llm_resp.json()["rag_strategy"] == "direct_llm"
+
         # Verify history endpoint
         hist_resp = client.get(f"/api/fields/{field_id}/chat/history")
         assert hist_resp.status_code == 200
         messages = hist_resp.json()
-        assert len(messages) == 2
+        assert len(messages) >= 2
         assert "rag_strategy" in messages[1]
 
         # Verify summary endpoint

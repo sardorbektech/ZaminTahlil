@@ -209,7 +209,7 @@ class ChatRequest(BaseModel):
     messages: list[ChatMessage] = Field(min_length=1, max_length=MAX_CHAT_MESSAGES)
     language: Literal["uz-latn", "uz-cyrl", "ru", "en"] | None = None
     selected_book_ids: list[int] | None = None
-    rag_mode: Literal["all_in_one", "advanced", "graph", "naive", "auto"] = "all_in_one"
+    rag_mode: Literal["advanced", "all_in_one", "graph", "naive", "direct_llm", "auto"] = "advanced"
 
 
 class ChatResponse(BaseModel):
@@ -217,8 +217,8 @@ class ChatResponse(BaseModel):
     model_name: str
     rag_sources: list[RAGSourceOut] = Field(default_factory=list)
     active_books: list[str] = Field(default_factory=list)
-    rag_strategy: str = "all_in_one"
-    rag_source_title: str = "⚡ All-in-One RAG"
+    rag_strategy: str = "advanced"
+    rag_source_title: str = "🔬 Advanced RAG"
     summary: str | None = None
 
 

@@ -432,17 +432,32 @@
 
             <!-- TAB 4: AGRO-AI CHAT & SUMMARY -->
             <div id="tab-chat" class="tab-content">
-              <!-- Active Books Selector Bar -->
+              <!-- Active Books & RAG Mode Selector Bar -->
               <div id="chatBookSelectorBar" class="chat-book-selector-bar">
                 <div class="active-books-info">
                   <span class="icon">📚</span>
-                  <strong>RAG Manbalari:</strong>
+                  <strong>Kitoblar:</strong>
                   <div id="activeBooksPills" class="active-books-tags">
                     <span class="book-tag-pill">Hamma kitoblar</span>
                   </div>
                 </div>
+
+                <div class="rag-mode-cluster">
+                  <label for="chatRagModeSelect" class="rag-mode-label">
+                    <span class="icon">⚡</span>
+                    <strong>RAG Usuli:</strong>
+                  </label>
+                  <select id="chatRagModeSelect" class="rag-mode-select">
+                    <option value="advanced" selected>🔬 Advanced RAG (Default)</option>
+                    <option value="all_in_one">⚡ All-in-One Parallel RAG</option>
+                    <option value="graph">🕸️ Graph RAG (Bilimlar Grafi)</option>
+                    <option value="naive">📚 Naive RAG (768-dim Vektor)</option>
+                    <option value="direct_llm">🤖 Umumiy LLM (RAGsiz)</option>
+                  </select>
+                </div>
+
                 <button id="openRagModalFromChat" class="manage-rag-link-btn" type="button">
-                  ⚙️ Kitoblarni tanlash / boshqarish
+                  ⚙️ Kitoblar
                 </button>
               </div>
 

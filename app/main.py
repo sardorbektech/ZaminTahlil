@@ -510,10 +510,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         saved_user_msg = repository.add_chat_message(field_id, "user", last_user_message)
 
-        # 2. RAG 4-Pog'onali qidiruv dvigateli (All-in-One, Advanced, Graph, Naive)
-        rag_mode = getattr(payload, "rag_mode", "all_in_one") or "all_in_one"
+        # 2. RAG 4-Pog'onali qidiruv dvigateli (Advanced, All-in-One, Graph, Naive, Direct LLM)
+        rag_mode = getattr(payload, "rag_mode", "advanced") or "advanced"
 
-        if rag_mode in ("all_in_one", "auto"):
+        if rag_mode == "all_in_one":
             rag_result = rag.search_all_in_one(
                 last_user_message,
                 database=database,
@@ -525,16 +525,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             rag_strategy = rag_result.rag_strategy
             rag_source_title = rag_result.rag_source_title
             graph_ctx = rag_result.graph_context
-        elif rag_mode == "advanced":
-            rag_chunks = rag.search_advanced(
-                last_user_message,
-                database=database,
-                top_k=4,
-                selected_doc_ids=payload.selected_book_ids,
-            )
-            rag_strategy = "advanced" if rag_chunks else "direct_llm"
-            rag_source_title = "🔬 Advanced RAG (Gibrid + Reranker)" if rag_chunks else "🤖 Umumiy LLM Bilimlari"
-            graph_ctx = None
         elif rag_mode == "graph":
             graph_ctx, rag_chunks = rag.search_graph(
                 last_user_message,
@@ -544,7 +534,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             rag_strategy = "graph" if graph_ctx else "direct_llm"
             rag_source_title = "🕸️ Graph RAG (Bilimlar Grafi)" if graph_ctx else "🤖 Umumiy LLM Bilimlari"
-        else:  # naive
+        elif rag_mode == "naive":
             rag_chunks = rag.search_naive(
                 last_user_message,
                 database=database,
@@ -553,6 +543,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             rag_strategy = "naive" if rag_chunks else "direct_llm"
             rag_source_title = "📚 Naive RAG (Vektor Qidiruv)" if rag_chunks else "🤖 Umumiy LLM Bilimlari"
+            graph_ctx = None
+        elif rag_mode == "direct_llm":
+            rag_chunks = []
+            rag_strategy = "direct_llm"
+            rag_source_title = "🤖 Umumiy LLM Bilimlari"
+            graph_ctx = None
+        else:  # advanced (default)
+            rag_chunks = rag.search_advanced(
+                last_user_message,
+                database=database,
+                top_k=4,
+                selected_doc_ids=payload.selected_book_ids,
+            )
+            rag_strategy = "advanced" if rag_chunks else "direct_llm"
+            rag_source_title = "🔬 Advanced RAG (Gibrid + Reranker)" if rag_chunks else "🤖 Umumiy LLM Bilimlari"
             graph_ctx = None
 
         if rag_mode != "all_in_one":
