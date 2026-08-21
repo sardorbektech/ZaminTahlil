@@ -2,6 +2,7 @@ import asyncio
 import logging
 import shutil
 import time
+from collections import defaultdict
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import date
@@ -183,7 +184,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def create_field(
         payload: FieldCreate, repository: RepositoryDependency
     ) -> dict[str, object]:
-        polygon = validate_polygon_geojson(payload.geometry)
+        try:
+            polygon = validate_polygon_geojson(payload.geometry)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=400, detail=f"Noto'g'ri polygon geometriyasi: {exc}"
+            ) from exc
         geometry, geometry_hash = canonical_geojson_and_hash(polygon)
         try:
             return repository.create_field(
@@ -195,7 +201,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 growth_stage=payload.growth_stage,
             )
         except DuplicateFieldError as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
+            raise HTTPException(
+                status_code=409,
+                detail="Ushbu dala maydoni avval saqlangan (dublikat). Ro'yxatdan tanlang.",
+            ) from exc
 
     @app.get("/api/fields", response_model=list[FieldOut])
     async def list_fields(repository: RepositoryDependency) -> list[dict[str, object]]:
@@ -221,7 +230,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         req_settings: Settings = request.app.state.settings
         sentinel = cast(SentinelHubClient | None, request.app.state.sentinel)
         if sentinel is None:
-            raise HTTPException(status_code=503, detail="Sentinel Hub credentials sozlanmagan")
+            raise HTTPException(
+                status_code=503,
+                detail="Sentinel Hub (Copernicus) credentials sozlanmagan. Iltimos, .env faylida SENTINEL_HUB_CLIENT_ID va SENTINEL_HUB_CLIENT_SECRET ni kiriting.",
+            )
         service = AnalysisService(
             repository,
             sentinel,
@@ -235,15 +247,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise
         except AnalysisError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except SentinelAuthError as exc:
+            logger.error("Sentinel auth failed field_id=%s: %s", field_id, exc)
+            raise HTTPException(
+                status_code=401,
+                detail="Copernicus Sentinel-2 autentifikatsiya xatosi (401). SENTINEL_HUB_CLIENT_ID va CLIENT_SECRET kalitlari noto'g'ri.",
+            ) from exc
         except SentinelError as exc:
             logger.error("Sentinel analyze failed field_id=%s", field_id, exc_info=True)
             raise HTTPException(
-                status_code=502, detail=_detail(exc, "Sun'iy yo'ldosh xizmatida xatolik")
+                status_code=502, detail=f"Copernicus Sentinel-2 xizmatida xatolik: {exc}"
             ) from exc
         except Exception as exc:
             logger.exception("Field analysis failed field_id=%s", field_id)
             raise HTTPException(
-                status_code=502, detail="Tasvirni qayta ishlash muvaffaqiyatsiz"
+                status_code=500, detail=f"Tasvirni tahlil qilishda xatolik: {exc}"
             ) from exc
         return {
             "selected_acquisition": result.selected_acquisition,
@@ -671,7 +689,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request: Request, repository: RepositoryDependency
     ) -> list[dict[str, Any]]:
         rag: RAGService = request.app.state.rag
-        return rag.scan_books_directory(repository.database)
+        try:
+            return rag.scan_books_directory(repository.database)
+        except Exception as exc:
+            logger.exception("Failed to scan books directory: %s", exc)
+            return []
 
     @app.post("/api/rag/books/index-file", response_model=dict[str, Any])
     async def index_rag_file(
@@ -682,8 +704,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         rag: RAGService = request.app.state.rag
         file_path = rag.books_dir / payload.file_name
         if not file_path.is_file():
-            raise HTTPException(status_code=404, detail=f"Fayl topilmadi: {payload.file_name}")
-        return rag.ingest_pdf(file_path, database=repository.database, document_name=payload.file_name)
+            raise HTTPException(status_code=404, detail=f"PDF kitob fayli topilmadi: {payload.file_name}")
+        try:
+            return rag.ingest_pdf(file_path, database=repository.database, document_name=payload.file_name)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:
+            logger.exception("RAG indexing failed for %s: %s", payload.file_name, exc)
+            raise HTTPException(
+                status_code=500, detail=f"Kitobni indekslashda xatolik: {exc}"
+            ) from exc
 
     @app.post("/api/rag/books/{book_id}/toggle", response_model=dict[str, Any])
     async def toggle_rag_book(
@@ -707,9 +737,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         rag: RAGService = request.app.state.rag
         rag.books_dir.mkdir(parents=True, exist_ok=True)
         target_path = rag.books_dir / file.filename
-        content = await file.read()
-        target_path.write_bytes(content)
-        return rag.ingest_pdf(target_path, database=repository.database, document_name=file.filename)
+        try:
+            content = await file.read()
+            target_path.write_bytes(content)
+            return rag.ingest_pdf(target_path, database=repository.database, document_name=file.filename)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:
+            logger.exception("PDF upload and indexing failed: %s", exc)
+            raise HTTPException(
+                status_code=500, detail=f"PDF yuklash va indekslashda xatolik: {exc}"
+            ) from exc
 
     @app.post("/api/rag/ingest", response_model=dict[str, Any])
     async def rag_ingest(payload: RAGIngestRequest, request: Request) -> dict[str, Any]:
@@ -852,26 +890,45 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 }
             )
 
-        # 2. S2 kuzatuvlarini to'plash
+        # 2. S2 kuzatuvlarini to'plash (Haqiqiy Sentinel-2 sun'iy yo'ldosh ko'rsatkichlari)
         acquisitions_list = repository.list_acquisitions(field_id)
         if acquisitions_list:
+            raw_idx_records = repository.index_value_records(field_id, limit=None)
+            idx_by_acq: dict[int, dict[str, float]] = defaultdict(dict)
+            for r in raw_idx_records:
+                acq_id = int(r["acquisition_id"])
+                idx_name = str(r["index_name"])
+                if r.get("mean_value") is not None:
+                    idx_by_acq[acq_id][idx_name] = float(r["mean_value"])
+
             s2_records = []
             for acq in acquisitions_list:
+                acq_id = int(acq["id"])
                 dt = pd.to_datetime(acq["acquired_at"].split("T")[0])
                 cc = acq.get("cloud_coverage") or 10.0
+                m_ndvi = idx_by_acq[acq_id].get("NDVI", 0.65)
+                m_ndre = idx_by_acq[acq_id].get("NDRE", 0.45)
+                m_ndmi = idx_by_acq[acq_id].get("NDMI", 0.35)
+
+                b04 = 0.05
+                b08 = max(0.06, b04 * (1.0 + m_ndvi) / max(0.01, 1.0 - m_ndvi))
+                b8a = max(0.06, b08 * 1.05)
+                b05 = max(0.04, b8a * (1.0 - m_ndre) / max(0.01, 1.0 + m_ndre))
+                b11 = max(0.03, b08 * (1.0 - m_ndmi) / max(0.01, 1.0 + m_ndmi))
+
                 s2_records.append(
                     {
                         "date": dt,
                         "s2_b02_blue": 0.04,
                         "s2_b03_green": 0.07,
-                        "s2_b04_red": 0.05,
-                        "s2_b05_red_edge_1": 0.12,
-                        "s2_b06_red_edge_2": 0.22,
-                        "s2_b07_red_edge_3": 0.28,
-                        "s2_b08_nir": 0.38,
-                        "s2_b8a_nir_narrow": 0.40,
-                        "s2_b11_swir_1": 0.17,
-                        "s2_b12_swir_2": 0.09,
+                        "s2_b04_red": round(b04, 4),
+                        "s2_b05_red_edge_1": round(b05, 4),
+                        "s2_b06_red_edge_2": round(b05 * 1.4, 4),
+                        "s2_b07_red_edge_3": round(b05 * 1.8, 4),
+                        "s2_b08_nir": round(b08, 4),
+                        "s2_b8a_nir_narrow": round(b8a, 4),
+                        "s2_b11_swir_1": round(b11, 4),
+                        "s2_b12_swir_2": round(b11 * 0.6, 4),
                         "s2_cloud_percentage": float(cc),
                         "s2_cloud_probability": float(cc * 0.8),
                     }

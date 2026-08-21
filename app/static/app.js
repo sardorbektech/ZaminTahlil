@@ -1333,11 +1333,13 @@ $("closeRagModal")?.addEventListener("click", () => {
 async function loadRagBooks() {
   try {
     const books = await apiFetch("/api/rag/books");
-    state.ragBooks = books;
+    state.ragBooks = Array.isArray(books) ? books : [];
     renderRagBooksGrid();
     updateSelectedBookIds();
   } catch (err) {
-    console.error("Failed to load RAG books:", err);
+    console.warn("RAG kitoblarni yuklab bo'lmadi:", err);
+    state.ragBooks = [];
+    renderRagBooksGrid();
   }
 }
 
