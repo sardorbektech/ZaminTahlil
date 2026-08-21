@@ -16,15 +16,16 @@ Ushbu hujjat platformaning me’moriy tuzilishi, funksional imkoniyatlari, matem
    - [3.3. 5 Bosqichli Biofizik va Fazoviy Anomaliyalar Diagnostikasi Moduli](#33-5-bosqichli-biofizik-va-fazoviy-anomaliyalar-diagnostikasi-moduli)
    - [3.4. Ko‘p Provayderli Chidamli Ob-havo Dvigateli (4 Qatlamli Arxitektura)](#34-kop-provayderli-chidamli-ob-havo-dvigateli-4-qatlamli-arxitektura)
    - [3.5. 4-Pog‘onali RAG Agronomik Bilimlar Bazasi](#35-4-pogonali-rag-agronomik-bilimlar-bazasi)
-   - [3.6. Mashinali O‘rganish (ML) Hosildorlik Bashorati](#36-mashinali-organish-ml-hosildorlik-bashorati)
-   - [3.7. Dala Muloqotlari, Avtomatik Xulosa va Manba Belgilari (Provenance Badges)](#37-dala-muloqotlari-avtomatik-xulosa-va-manba-belgilari-provenance-badges)
-   - [3.8. Yillik va Tarixiy Indekslar Dinamikasi](#38-yillik-va-tarixiy-indekslar-dinamikasi)
-   - [3.9. Dala Maydonlari Bazasini Xavfsiz Tozalash](#39-dala-maydonlari-bazasini-xavfsiz-tozalash)
+   - [3.6. Offline Developer RAG Ingestion va Ko‘chma Seed Arxitekturasi](#36-offline-developer-rag-ingestion-va-kochma-seed-arxitekturasi)
+   - [3.7. Mashinali O‘rganish (ML) Hosildorlik Bashorati](#37-mashinali-organish-ml-hosildorlik-bashorati)
+   - [3.8. Dala Muloqotlari, Avtomatik Xulosa va Manba Belgilari (Provenance Badges)](#38-dala-muloqotlari-avtomatik-xulosa-va-manba-belgilari-provenance-badges)
+   - [3.9. Yillik va Tarixiy Indekslar Dinamikasi](#39-yillik-va-tarixiy-indekslar-dinamikasi)
+   - [3.10. Dala Maydonlari Bazasini Xavfsiz Tozalash](#310-dala-maydonlari-bazasini-xavfsiz-tozalash)
 4. [Matematik Formulalar va Hisoblash Metodologiyasi](#4-matematik-formulalar-va-hisoblash-metodologiyasi)
-5. [Texnologiyalar Steki](#5-texnologiyalar-steki)
+5. [Texnologiyalar Steki va Minimal Bog‘liqliklar](#5-texnologiyalar-steki-va-minimal-bogliqliklar)
 6. [Ma’lumotlar Bazasi Sxemasi (Schema v7)](#6-malumotlar-bazasi-sxemasi-schema-v7)
 7. [API Spetsifikatsiyasi (REST Endpoints)](#7-api-spetsifikatsiyasi-rest-endpoints)
-8. [Xavfsizlik, Maxfiylik va Ish Rejimlari](#8-xavfsizlik-maxfiylik-va-ish-rejimlari)
+8. [Xavfsizlik, Barqarorlik va Ish Rejimlari](#8-xavfsizlik-barqarorlik-va-ish-rejimlari)
 
 ---
 
@@ -35,8 +36,9 @@ An’anaviy dehqonchilikda dalalarni monitoring qilish ko‘p vaqt, jismoniy meh
 **ZaminTahlil** ushbu muammolarni quyidagi asosiy yo‘nalishlarda hal etadi:
 - **Kosmik monitoring**: Yevropa Kosmik Agentligi ($ESA$) ning $Sentinel-2$ sun’iy yo‘ldoshidan olingan 10 metrlik multispektral tasvirlar orqali dalaning har bir qismini masofadan turib to‘liq skanerlash;
 - **Ko‘p provayderli ob-havo va tuproq integratsiyasi**: $Open\text{-}Meteo$ va $NASA\ POWER$ orqali dalaning aniq geografik nuqtasidagi havo harorati, quyosh radiatsiyasi, bug‘lanish ($ET_0$) va 3 ta chuqurlikdagi (0–7 sm, 7–28 sm, 28–100 sm) tuproq namligini kuzatish;
-- **Aniqlik darajasi yuqori hosil bashorati**: 122 ta agrometeorologik va spektral xususiyatlar asosida $CatBoost$, $LightGBM$, $XGBoost$, $RandomForest$ va $GradientBoosting$ algoritmlari yordamida gektariga hosildorlikni ($t/ga$) va jami hosilni ($tonna$) oldindan bashorat qilish;
-- **4-Pog‘onali RAG Agronomik AI Maslahatchisi**: Agronomiya kitoblari va darsliklarining mahalliy 768-o‘lchamli vektor bazasi ($RAG$) hamda bilimlar grafi orqali dehqon va agronomlarning har bir savoliga ilmiy asoslangan, kitob sahifasiga havola qilingan, samimiy va oddiy tushunarli amaliy javoblar berish.
+- **Aniqlik darajasi yuqori hosil bashorati**: 122 ta agrometeorologik va real $Sentinel-2$ optik-spektral parametrlari asosida $CatBoost$, $LightGBM$, $XGBoost$, $RandomForest$ va $GradientBoosting$ algoritmlari yordamida gektariga hosildorlikni ($t/ga$) va jami hosilni ($tonna$) oldindan bashorat qilish;
+- **4-Pog‘onali RAG Agronomik AI Maslahatchisi**: Agronomiya kitoblari va darsliklarining mahalliy 768-o‘lchamli vektor bazasi ($RAG$) hamda bilimlar grafi orqali dehqon va agronomlarning har bir savoliga ilmiy asoslangan, kitob sahifasiga havola qilingan, samimiy va oddiy tushunarli amaliy javoblar berish;
+- **Server Barqarorligi va Minimal Xotira Sarfi**: Serverda (VM) og‘ir PDF qayta ishlashni talab qilmaydigan, toza minimal bog‘liqliklar (`requirements.txt`) va 100% pre-computed RAG seed arxitekturasi.
 
 ---
 
@@ -47,8 +49,8 @@ graph TD
     User([Foydalanuvchi / Dehqon / Agronom]) <--> Frontend[Zamonaviy Veb Interfeys: Leaflet Hybrid + Chart.js]
     Frontend <--> FastAPI[FastAPI Backend Server]
 
-    subgraph Tashqi Xizmatlar
-        CDSE[Copernicus Data Space Ecosystem / Sentinel-2]
+    subgraph Tashqi Real API-lar
+        CDSE[Copernicus Data Space Ecosystem / Sentinel-2 L2A]
         OpenMeteo[Open-Meteo Multi-Endpoint: Forecast, ECMWF, GFS, DWD]
         NASAPower[NASA POWER Global Agroclimatology API]
         OpenAI[OpenAI LLM API: Primary & Fallback]
@@ -61,8 +63,11 @@ graph TD
         MLModels[Pre-trained ML Modellar: CatBoost, LightGBM, XGBoost, RF, GB]
     end
 
-    subgraph Ma'lumotlar Saqlash
+    subgraph Ma'lumotlar Saqlash va Precomputed Seed
         SQLite[(SQLite Database v7: Fields, Chunks, Chat, Yield, Provenance)]
+        RAGSeed[(Portable RAG Seed: data/rag_seed.json)]
+        VectorsChunks[(Precomputed Vectors & Chunks: data/vectors, data/chunks)]
+        GraphData[(Knowledge Graph Data: data/graph/extracted_graphs.pkl)]
         ArtifactsDir[(Artifacts: PNG Heatmaps & NPY Vektorlar)]
         WeatherCache[(Local Weather Cache: PKL)]
     end
@@ -76,6 +81,9 @@ graph TD
     FastAPI <--> GraphRAG
     FastAPI <--> MLModels
     FastAPI <--> SQLite
+    SQLite <..> RAGSeed
+    FastAPI <--> VectorsChunks
+    FastAPI <--> GraphData
     FastAPI <--> ArtifactsDir
     FastAPI <--> WeatherCache
 ```
@@ -89,7 +97,8 @@ graph TD
 - **Interaktiv Chizish**: $Leaflet\text{-}Draw$ vositasida dala konturi erkin polygon sifatida chiziladi.
 - **Geodezik Maydon Hisoblash**: $PyProj$ kutubxonasining WGS84 ellipsoidi ($Geod$) yordamida yer egriligi hisobga olingan holda gektar ($ga$) birligida 100% aniqlikda hisoblanadi.
 - **8 Xonali Public ID**: Har bir yangi kiritilgan dalaga ixcham 8 xonali kichik harf va raqamlardan iborat noyob identifikator beriladi (masalan: `r1ntw4h8`, `a7k9b2x4`).
-- **Dublikatlardan Himoya**: Dala geometriyasidan olingan SHA-256 xesh kodi orqali ayni bir xil dala qayta kiritilishining oldi olinadi.
+- **Dublikatlardan Xavfsiz Himoya**: Dala geometriyasidan olingan SHA-256 xesh kodi orqali ayni bir xil dala qayta kiritilganda server qulamasdan aniq **409 Conflict** (`"Ushbu dala maydoni avval saqlangan (dublikat)"`) xabari bilan foydalanuvchini ogohlantiradi.
+- **Noto‘g‘ri Geometriya Nazorati**: Yopiq bo‘lmagan yoki koordinatalari buzilgan poligonlar uchun **400 Bad Request** qaytariladi.
 
 ### 3.2. Sentinel-2 L2A Spektral Tahlili va A/B Swipe Viewer
 - **Haqiqiy Ko‘p Qatlamli Tahlil**: Sentinel Hub orqali oxirgi 5 ta kuzatuv yuklanadi va 10 metrli piksellar katagida quyidagi qatlamlar hisoblanadi:
@@ -153,16 +162,26 @@ Loyiha 4 ta ixtisoslashgan agronomik RAG strategiyasini o‘z ichiga oladi va fo
 
 - **Kafolatlangan Qidiruv**: Foydalanuvchi RAG rejimini tanlaganda, tizim majburiy ravishda indekslangan kitoblar bazasidan eng mos nomzod bo‘laklarni ajratib AI kontekstiga kiritadi.
 
-### 3.6. Mashinali O‘rganish (ML) Hosildorlik Bashorati
+### 3.6. Offline Developer RAG Ingestion va Ko‘chma Seed Arxitekturasi
+- **Mahalliy CLI Ingestion**: Dasturchi o‘z noutbukida yangi PDF kitoblarni `data/books/` papkasiga joylashtirib, quyidagi buyruq orqali ularni embedding va grafga o‘tkazadi:
+  ```bash
+  python scripts/ingest_books.py
+  ```
+- **Ko‘chma RAG Seed (`data/rag_seed.json`)**: Yaratilgan 768-o‘lchamli embeddinglar va bo‘laklar ixcham JSON faylga eksport qilinadi va Git orqali VM ga yuboriladi.
+- **Og‘ir PDF fayllar Gitdan mustasno**: 20MB–500MB lik og‘ir PDF fayllar `.gitignore` ga olingan bo‘lib, Git va server xotirasini tejaydi.
+- **Serverda 0.1s Tezkor Ishga Tushish**: Server (VM) da bazani ishga tushirganda (`db.initialize()`), agar baza bo‘sh bo‘lsa, u avtomatik ravishda `data/rag_seed.json` dan barcha kitoblarni tiklaydi — serverda og‘ir ONNX hisob-kitoblar talab etilmaydi!
+- **Oddiy Foydalanuvchi Boshqaruvi**: Web interfeysda qo‘lda fayl yuklash yoki o‘chirish olib tashlangan; foydalanuvchi faqat mavjud kitoblarni RAG AI uchun **Yoqish (ON)** yoki **O‘chirish (OFF)** boshqaruviga ega.
+
+### 3.7. Mashinali O‘rganish (ML) Hosildorlik Bashorati
 - **Ko‘p manbali 122 ta parametr matritsasi**:
   - Kunlik agrometeorologiya (harorat, namlik, quyosh radiatsiyasi, $ET_0$, 3 chuqurlikdagi tuproq namligi);
-  - $Sentinel-2$ optik spektral indekslari ($NDVI, EVI, GNDVI, SAVI, MSAVI, OSAVI, NDRE, NDMI, NDWI$);
+  - Real $Sentinel-2$ optik spektral indekslari ($NDVI, EVI, GNDVI, SAVI, MSAVI, OSAVI, NDRE, NDMI, NDWI$);
   - $Sentinel-1$ SAR radar ko‘rsatkichlari ($VV, VH$, radar nisbati $VV-VH$);
   - Ekin fenologiyasi (ekilganidan beri o‘tgan kunlar, o‘rim-yig‘imgacha qolgan kunlar, mavsumiy rivojlanish fazasi, siklik sinus/kosinus parametrlar).
 - **Pre-trained Modellar**: `CatBoost`, `LightGBM`, `XGBoost`, `Random Forest`, `Gradient Boosting`.
 - **Natijalar**: 1 Gektar hosildorligi ($t/ga$), ishonchlilik oralig‘i ($\pm \sigma$), butun dalaning jami hosili ($tonna$), eng muhim 10 ta ta’sir omili ($Top\ Features$) hamda 2 o‘qli interaktiv fenologiya grafigi (`Chart.js`) va oylik batafsil jadval.
 
-### 3.7. Dala Muloqotlari, Avtomatik Xulosa va Manba Belgilari (Provenance Badges)
+### 3.8. Dala Muloqotlari, Avtomatik Xulosa va Manba Belgilari (Provenance Badges)
 - **Doimiy Xotira**: Muloqot xabarlari server SQLite bazasiga (`field_chat_messages`) saqlanadi.
 - **RAG Manba Nishonlari (Provenance Badges)**:
   - `⚡ All-in-One RAG (Advanced + Graph)` (Binafsha/moviy gradient nishon);
@@ -173,11 +192,11 @@ Loyiha 4 ta ixtisoslashgan agronomik RAG strategiyasini o‘z ichiga oladi va fo
 - **Oddiy va Dehqonbop AI Tili**: AI tavsiyalari va suhbat javoblari quruq ilmiy atamalardan xoli, samimiy, tushunarli, o‘ta lo‘nda va 1-2 gaplik aniq amaliy bandlarda taqdim etiladi.
 - **Lo‘nda Xulosa (Summary)**: Har bir muloqotdan so‘ng sun’iy intellekt suhbatning qisqa xulosasini (`field_chat_summaries`) avtomatik yangilab boradi.
 
-### 3.8. Yillik va Tarixiy Indekslar Dinamikasi
+### 3.9. Yillik va Tarixiy Indekslar Dinamikasi
 - **Boshlanish Sanasi**: Sukut bo‘yicha **`01.01.2026`** (joriy yilning 1-yanvari) qilib sozlangan va yil o‘zgarganda avtomatik sinxronlanadi.
 - **Chart.js Dinamikasi**: Barcha 5 ta asosiy indeksning ($NDVI, NDMI, NDRE, EVI, BSI$) yillar bo‘yicha o‘zgarish egri chizig‘i.
 
-### 3.9. Dala Maydonlari Bazasini Xavfsiz Tozalash
+### 3.10. Dala Maydonlari Bazasini Xavfsiz Tozalash
 - **Sidebar Tozalash Tugmasi**: `🗑️ Tozalash` tugmasi va xavfsizlik modali;
 - **Tasdiqlash Paroli**: **`roziman`** paroli kiritilganda bazadagi barcha dala maydonlari, hisob-kitoblar, xaritalar va chat xabarlari to‘liq o‘chiriladi (agronom kitoblari saqlanadi).
 
@@ -213,19 +232,21 @@ $$\text{Similarity}(\vec{u}, \vec{v}) = \frac{\vec{u} \cdot \vec{v}}{\|\vec{u}\|
 
 ---
 
-## 5. Texnologiyalar Steki
+## 5. Texnologiyalar Steki va Minimal Bog‘liqliklar
+
+Loyiha Google Cloud VM xotirasini tejash uchun faqat eng zaruriy 20 ta toza kutubxona bilan ishlaydi ([`requirements.txt`](file:///c:/Users/user/OneDrive/Desktop/Start-Up/ZaminTahlil/requirements.txt)):
 
 | Qatlam | Asosiy Texnologiyalar |
 | :--- | :--- |
-| **Backend** | Python 3.12+, FastAPI, Uvicorn, Pydantic v2, HTTPX |
-| **Ma’lumotlar Bazasi** | SQLite 3 (WAL mode, Foreign Keys ON, Schema v7) |
-| **Geofazoviy Tahlil** | Shapely 2.0+, PyProj 3.6+, SciPy 1.18+ (ndimage, linalg), NumPy |
+| **Backend** | Python 3.12+, FastAPI, Uvicorn, Pydantic v2, HTTPX, Python-Multipart |
+| **Ma’lumotlar Bazasi** | SQLite 3 (WAL mode, Foreign Keys ON, Schema v7, Precomputed JSON Seeder) |
+| **Geofazoviy Tahlil** | Shapely 2.0+, PyProj 3.6+, SciPy 1.18+ (ndimage, linalg), NumPy, TiffFile, Pillow |
 | **Machine Learning** | Scikit-learn, CatBoost, LightGBM, XGBoost, Pandas, Joblib |
 | **NLP & RAG** | FastEmbed 768-dim (`nomic-ai/nomic-embed-text-v1.5`), BM25Okapi, MMR, Knowledge Graph BFS, PyPDF, OpenAI API |
 | **Tashqi API-lar** | Copernicus Data Space Ecosystem (Sentinel-2 L2A), Open-Meteo Multi-Endpoint, NASA POWER API |
 | **Frontend** | Vanilla JavaScript (ES6+), Leaflet, Leaflet-Draw, Chart.js, Marked.js, DOMPurify |
-| **Dizayn Tizimi** | Modern Vanilla CSS (Sonar Radar Marker, Glassmorphism, Responsive Grid & Flexbox) |
-| **Xavfsizlik & Test** | Pure ASGI Security Headers, Sensitive Data Log Masking, PyTest (66 test) |
+| **Dizayn Tizimi** | Modern Vanilla CSS (Sonar Radar Marker, Glassmorphism, Responsive Grid & Flexbox, Cache-Busted Assets) |
+| **Xavfsizlik & Test** | Pure ASGI Security Headers, Sensitive Data Log Masking, PyTest (66 test, 100% pass) |
 
 ---
 
@@ -249,7 +270,7 @@ Loyiha quyidagi 10 ta jadvaldan iborat relying bazaga ega:
 ## 7. API Spetsifikatsiyasi (REST Endpoints)
 
 ### Dala Boshqaruvi
-- `POST /api/fields` — Yangi dala qo‘shish (GeoJSON polygon, ekin nomi, ekilgan sana, rivojlanish bosqichi).
+- `POST /api/fields` — Yangi dala qo‘shish (GeoJSON polygon, ekin nomi, ekilgan sana, rivojlanish bosqichi. Dublikat bo‘lsa: 409).
 - `GET /api/fields` — Barcha saqlangan dalalar ro‘yxati.
 - `GET /api/fields/{id}` — Dala tafsilotlari (id yoki 8 xonali public_id orqali).
 - `POST /api/database/purge-fields` — Barcha dala maydonlari va tahlillarni tozalash (Parol: `roziman`).
@@ -264,17 +285,14 @@ Loyiha quyidagi 10 ta jadvaldan iborat relying bazaga ega:
 
 ### Hosildorlikni Bashorat Qilish (ML)
 - `GET /api/yield/models` — Mavjud ML modellari (`CatBoost`, `LightGBM`, `XGBoost`, `RandomForest`, `GradientBoosting`).
-- `POST /api/fields/{id}/predict-yield` — 122 ta parametr asosida hosildorlikni hisoblash ($t/ga$, jami tonna, ishonchlilik oralig‘i, top omillar).
+- `POST /api/fields/{id}/predict-yield` — 122 ta parametr va real Sentinel-2 o‘lchovlari asosida hosildorlikni hisoblash ($t/ga$, jami tonna, ishonchlilik oralig‘i, top omillar).
 - `GET /api/fields/{id}/yield-latest` — Dalaning oxirgi hosildorlik bashorati.
 
 ### RAG Bilimlar Bazasi (Ko‘p Kitobli va 4-Pog‘onali Boshqaruv)
-- `GET /api/rag/books` — `data/books/` papkasidagi barcha PDF kitoblar holati (`indexed`, `is_active`, `size_mb`).
-- `POST /api/rag/books/index-file` — Tanlangan PDF kitobni 768-dim model bilan indekslash.
+- `GET /api/rag/books` — Barcha mavjud kitoblar va ularning faollik holati (`indexed`, `is_active`, `total_pages`, `chunk_count`).
 - `POST /api/rag/books/{id}/toggle` — Kitobni RAG qidiruvi uchun yoqish yoki o‘chirish (`is_active`).
-- `POST /api/rag/upload` — Yangi PDF kitobni `data/books/` papkasiga yuklash va avtomatik indekslash.
-- `POST /api/rag/ingest` — PDF kitobni kiritish va embedding hisoblash.
-- `GET /api/rag/documents` — Kiritilgan barcha kitoblar ro‘yxati.
-- `DELETE /api/rag/documents/{id}` — Kitobni bazadan o‘chirish.
+- `POST /api/rag/books/index-file` — Tanlangan kitobni qayta indekslash (ichki/CLI).
+- `POST /api/rag/upload` — Yangi kitob yuklash (ichki/CLI).
 
 ### Chat & Dala Xulosasi
 - `GET /api/fields/{id}/chat/history` — Dala bo‘yicha yozishmalar tarixi (va RAG manba belgilari).
@@ -283,7 +301,7 @@ Loyiha quyidagi 10 ta jadvaldan iborat relying bazaga ega:
 
 ---
 
-## 8. Xavfsizlik, Maxfiylik va Ish Rejimlari
+## 8. Xavfsizlik, Barqarorlik va Ish Rejimlari
 
 ### 8.1. Ish Rejimlari (`APP_ENV`)
 - **`APP_ENV=demo` (Standart)**:
@@ -292,7 +310,7 @@ Loyiha quyidagi 10 ta jadvaldan iborat relying bazaga ega:
   - Ishlab chiqish va sinovlar uchun qulay.
 - **`APP_ENV=prod` (Ishlab Chiqarish)**:
   - Barcha API hujjatlari yopiq (404);
-  - Xatolar umumlashtirilgan holda ko‘rsatiladi (`"Ichki server xatosi"`), tafsilotlar faqat server loglariga yoziladi;
+  - Xatolar umumlashtirilgan holda ko‘rsatiladi, tafsilotlar faqat server loglariga yoziladi;
   - Faqat `CORS_ORIGINS` da ruxsat berilgan domenlarga javob beriladi.
 
 ### 8.2. Loglarni Avtomatik Maskalash (`SensitiveDataFilter`)
@@ -306,9 +324,16 @@ Har bir HTTP javobga avtomatik tarzda quyidagi xavfsizlik sarlavhalari qo‘shil
 - `Permissions-Policy: camera=(), microphone=(), geolocation=()`
 - `Strict-Transport-Security: max-age=31536000; includeSubDomains` (HTTPS so‘rovlar uchun).
 
-### 8.4. 4 Tilda To‘liq Qo‘llab-quvvatlash
+### 8.4. Brauzer Keshini Yangilash (Cache-Busting)
+Frontend statik fayllari (`styles.css?v=20260821`, `app.js?v=20260821`, `i18n.js?v=20260821`) versiya teglari bilan ta’minlangan bo‘lib, Cloudflare yoki foydalanuvchi brauzerida eski dizayn keshlanib qolishining oldini oladi.
+
+### 8.5. 4 Tilda To‘liq Qo‘llab-quvvatlash
 Interfeys va AI muloqot tizimi to‘liq 4 ta tilda ishlaydi:
 - **O‘zbekcha (lotin)** (`uz-latn`)
 - **Ўзбекча (кирилл)** (`uz-cyrl`)
 - **Русский** (`ru`)
 - **English** (`en`)
+
+---
+
+*ZaminTahlil — Hosildorlikni fan va texnologiya bilan yuksaltirish sari!*
