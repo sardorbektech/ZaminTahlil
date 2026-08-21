@@ -35,11 +35,11 @@ data/*.db*
 *.db-wal
 *.db-shm
 
-# Pickled cache files
-data/vectors/*.pkl
-data/chunks/*.pkl
-data/graph/*.pkl
-*.pkl
+# PDF Books (developer processes locally; heavy PDFs must NOT be in Git)
+*.pdf
+data/books/*.pdf
+data/books/*
+!data/books/.gitkeep
 
 # External / Example directories not part of ZaminTahlil core
 example code/

@@ -548,30 +548,19 @@
           <div class="modal-header-text">
             <span class="modal-tag">KUTUBXONA (768-DIM RAG)</span>
             <h2 data-i18n="rag.modalTitle">Agronomiya Bilimlar Bazasi (RAG)</h2>
-            <p class="modal-subtitle">PDF kitoblarni tanlash, indekslash va yangi kitob yuklash</p>
+            <p class="modal-subtitle">Sun'iy intellekt tahlillari va tavsiyalarida foydalaniladigan kitoblarni tanlang</p>
           </div>
           <button id="closeRagModal" class="modal-close-icon" type="button" aria-label="Yopish">✕</button>
         </div>
 
         <div class="modal-scroll-body">
-          <!-- Upload new PDF form -->
-          <form id="ragUploadForm" class="modal-ingest-form">
-            <div class="form-group">
-              <label for="ragFileInput">📥 Yangi PDF Kitob Yuklash (data/books/)</label>
-              <input id="ragFileInput" type="file" accept=".pdf" required />
-            </div>
-            <button id="ragUploadBtn" class="secondary-btn modal-submit-btn" type="submit">
-              Yuklash va 768-dim indekslash
-            </button>
-          </form>
-
           <div id="ragMessage" class="status-msg modal-msg" role="status"></div>
 
-          <!-- Books in data/books and database -->
+          <!-- Books list -->
           <div class="modal-docs-container">
-            <h3 class="docs-section-title">📚 Mavjud Agronomik Kitoblar (data/books/)</h3>
+            <h3 class="docs-section-title">📚 Agronomik Qo'llanmalar va Darsliklar</h3>
             <p class="muted-note" style="margin-bottom:0.75rem;">
-              Kerakli kitoblarni RAG qidiruvi uchun yoqishingiz yoki yangi kitobni indekslashingiz mumkin:
+              Kerakli kitoblarni RAG qidiruvi uchun yoqishingiz yoki o'chirishingiz mumkin:
             </p>
             <div id="ragBooksGrid" class="modal-docs-grid">
               <p class="muted-note">Kitoblar ro'yxati yuklanmoqda...</p>

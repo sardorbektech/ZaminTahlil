@@ -447,44 +447,51 @@ class RAGService:
         return chunks
 
     def scan_books_directory(self, database: Any) -> list[dict[str, Any]]:
-        """data/books/ papkasidagi barcha PDF fayllarni tekshiradi va bazadagi holati bilan qaytaradi."""
+        """Bazadagi barcha indekslangan kitoblar ro'yxatini qaytaradi (PDF fayl bo'lmasa ham)."""
         self.books_dir.mkdir(parents=True, exist_ok=True)
-        pdf_files = sorted(
-            [p for p in self.books_dir.iterdir() if p.is_file() and p.suffix.lower() == ".pdf"],
-            key=lambda x: x.name,
-        )
+        pdf_files_map = {
+            p.name: p for p in self.books_dir.iterdir() if p.is_file() and p.suffix.lower() == ".pdf"
+        }
 
         with database.connect() as connection:
             db_docs = connection.execute(
                 "SELECT * FROM rag_documents ORDER BY created_at DESC"
             ).fetchall()
-            db_docs_map = {row["name"]: dict(row) for row in db_docs}
 
         books_list: list[dict[str, Any]] = []
-        for pdf_path in pdf_files:
-            file_name = pdf_path.name
-            size_mb = round(pdf_path.stat().st_size / (1024 * 1024), 2)
-            db_record = db_docs_map.get(file_name)
+        seen_names = set()
 
-            if db_record:
-                books_list.append(
-                    {
-                        "id": db_record["id"],
-                        "name": file_name,
-                        "file_path": str(pdf_path),
-                        "size_mb": size_mb,
-                        "total_pages": db_record["total_pages"],
-                        "chunk_count": db_record["chunk_count"],
-                        "embedding_model": db_record["embedding_model"],
-                        "is_active": bool(db_record["is_active"]),
-                        "indexed": True,
-                    }
-                )
-            else:
+        for row in db_docs:
+            name = str(row["name"])
+            seen_names.add(name)
+            pdf_path = pdf_files_map.get(name)
+            size_mb = (
+                round(pdf_path.stat().st_size / (1024 * 1024), 2)
+                if pdf_path and pdf_path.exists()
+                else 0.0
+            )
+            books_list.append(
+                {
+                    "id": row["id"],
+                    "name": name,
+                    "file_path": str(pdf_path) if pdf_path else row["file_path"],
+                    "size_mb": size_mb,
+                    "total_pages": row["total_pages"],
+                    "chunk_count": row["chunk_count"],
+                    "embedding_model": row["embedding_model"],
+                    "is_active": bool(row["is_active"]),
+                    "indexed": True,
+                }
+            )
+
+        # Developer noutbukida yangi indekslanmagan PDF bo'lsa uni ham ko'rsatish
+        for name, pdf_path in pdf_files_map.items():
+            if name not in seen_names:
+                size_mb = round(pdf_path.stat().st_size / (1024 * 1024), 2)
                 books_list.append(
                     {
                         "id": None,
-                        "name": file_name,
+                        "name": name,
                         "file_path": str(pdf_path),
                         "size_mb": size_mb,
                         "total_pages": None,
@@ -494,6 +501,7 @@ class RAGService:
                         "indexed": False,
                     }
                 )
+
         return books_list
 
     def ingest_pdf(

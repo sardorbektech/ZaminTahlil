@@ -1354,7 +1354,7 @@ function renderRagBooksGrid() {
   if (!container) return;
 
   if (!state.ragBooks || !state.ragBooks.length) {
-    container.innerHTML = `<p class="muted-note">data/books/ papkasida PDF kitoblar topilmadi.</p>`;
+    container.innerHTML = `<p class="muted-note">Agronomik kitoblar bazasi topilmadi.</p>`;
     return;
   }
 
@@ -1363,26 +1363,7 @@ function renderRagBooksGrid() {
     const card = document.createElement("div");
     card.className = "rag-doc-card";
 
-    const statusBadge = book.indexed
-      ? `<span class="badge" style="background:#ecfdf5; color:#059669; border:1px solid #a7f3d0;">✅ 768-dim Indekslangan (${book.chunk_count} fragment)</span>`
-      : `<span class="badge" style="background:#fef3c7; color:#d97706; border:1px solid #fde68a;">⏳ Indekslanmagan</span>`;
-
-    const activeCheckbox = book.indexed
-      ? `
-        <label class="checkbox-label" style="font-size:0.8rem; margin-top:0.4rem;">
-          <input type="checkbox" ${book.is_active ? "checked" : ""} onchange="toggleRagBook(${book.id}, this.checked)" />
-          <strong>RAG qidiruvi uchun faol</strong>
-        </label>
-      `
-      : "";
-
-    const indexBtn = !book.indexed
-      ? `<button class="btn-index-now" type="button" onclick="indexRagBookFile('${book.name}', this)">⚡ 768-dim Indekslash</button>`
-      : `<button class="secondary-btn" style="padding:0.3rem 0.6rem; font-size:0.75rem;" type="button" onclick="indexRagBookFile('${book.name}', this)">🔄 Qayta indekslash</button>`;
-
-    const deleteBtn = book.id
-      ? `<button class="doc-delete-btn" type="button" onclick="deleteRagDoc(${book.id})">${t("rag.deleteBtn")}</button>`
-      : "";
+    const statusBadge = `<span class="badge" style="background:#ecfdf5; color:#059669; border:1px solid #a7f3d0;">✅ 768-dim Tayyor (${book.chunk_count} fragment)</span>`;
 
     card.innerHTML = `
       <div class="doc-info" style="width:100%;">
@@ -1390,16 +1371,15 @@ function renderRagBooksGrid() {
           <div>
             <strong class="doc-name" style="font-size:0.95rem;">📖 ${book.name}</strong>
             <div class="doc-meta" style="margin-top:0.25rem;">
-              ${book.size_mb} MB ${book.total_pages ? `· ${book.total_pages} sahifa` : ""}
+              ${book.total_pages ? `${book.total_pages} sahifa · ` : ""}${book.chunk_count} ta bilim fragmenti
             </div>
           </div>
           ${statusBadge}
         </div>
-        ${activeCheckbox}
-        <div class="book-card-actions">
-          ${indexBtn}
-          ${deleteBtn}
-        </div>
+        <label class="checkbox-label" style="font-size:0.85rem; margin-top:0.6rem; display:inline-flex; align-items:center; gap:0.4rem; cursor:pointer;">
+          <input type="checkbox" ${book.is_active ? "checked" : ""} onchange="toggleRagBook(${book.id}, this.checked)" />
+          <strong>RAG qidiruvi uchun faol</strong>
+        </label>
       </div>
     `;
     container.appendChild(card);
@@ -1418,79 +1398,6 @@ window.toggleRagBook = async function (bookId, isActive) {
     alert(`Holatni o'zgartirib bo'lmadi: ${err.message}`);
   }
 };
-
-window.indexRagBookFile = async function (fileName, btnEl) {
-  if (btnEl) {
-    btnEl.disabled = true;
-    btnEl.classList.add("btn-loading");
-  }
-  showStatus("ragMessage", `"${fileName}" kitobi 768-dim model bilan indekslanmoqda...`, "loading");
-  try {
-    const res = await apiFetch("/api/rag/books/index-file", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ file_name: fileName }),
-    });
-    showStatus("ragMessage", `✅ Muvaffaqiyatli indekslandi: ${res.name} (${res.chunk_count} ta bo'lak, ${res.elapsed_seconds}s)`, "success");
-    await loadRagBooks();
-  } catch (err) {
-    showStatus("ragMessage", `❌ Xatolik: ${err.message}`, "error");
-  } finally {
-    if (btnEl) {
-      btnEl.disabled = false;
-      btnEl.classList.remove("btn-loading");
-    }
-  }
-};
-
-window.deleteRagDoc = async function (docId) {
-  if (!confirm("Ushbu kitob indekslarini bazadan o'chirmoqchimisiz?")) return;
-  try {
-    await apiFetch(`/api/rag/documents/${docId}`, { method: "DELETE" });
-    await loadRagBooks();
-  } catch (err) {
-    alert(err.message);
-  }
-};
-
-$("ragUploadForm")?.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const fileInput = $("ragFileInput");
-  if (!fileInput.files.length) return;
-  const file = fileInput.files[0];
-
-  const uploadBtn = $("ragUploadBtn");
-  if (uploadBtn) {
-    uploadBtn.disabled = true;
-    uploadBtn.classList.add("btn-loading");
-  }
-  showStatus("ragMessage", `"${file.name}" yuklanmoqda va 768-dim embedding hisoblanmoqda...`, "loading");
-
-  const formData = new FormData();
-  formData.append("file", file);
-
-  try {
-    const res = await fetch("/api/rag/upload", {
-      method: "POST",
-      body: formData,
-    });
-    if (!res.ok) {
-      const errJson = await res.json().catch(() => ({ detail: res.statusText }));
-      throw new Error(errJson.detail || "Yuklashda xatolik");
-    }
-    const data = await res.json();
-    showStatus("ragMessage", `✅ Kitob yuklandi va indekslandi: ${data.name} (${data.chunk_count} bo'lak)`, "success");
-    $("ragUploadForm").reset();
-    await loadRagBooks();
-  } catch (err) {
-    showStatus("ragMessage", `❌ ${err.message}`, "error");
-  } finally {
-    if (uploadBtn) {
-      uploadBtn.disabled = false;
-      uploadBtn.classList.remove("btn-loading");
-    }
-  }
-});
 
 
 /* =========================================================

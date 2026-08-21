@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     cors_origins: str = ""
     models_dir: Path = Path("models")
     rag_similarity_threshold: float = Field(default=0.50, ge=0.0, le=1.0)
-    rag_model_name: str = "BAAI/bge-small-en-v1.5"
+    rag_model_name: str = "nomic-ai/nomic-embed-text-v1.5"
 
     @field_validator("sentinel_proxy", mode="before")
     @classmethod

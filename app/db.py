@@ -144,7 +144,7 @@ class Database:
         self.path = Path(path)
 
 
-    def initialize(self) -> None:
+    def initialize(self, seed_rag: bool = False) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as connection:
             connection.executescript(SCHEMA)
@@ -214,6 +214,59 @@ class Database:
                 "VALUES (?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
                 (SCHEMA_VERSION,),
             )
+        if seed_rag or self.path.name == "zamintahlil.sqlite3":
+            self.seed_rag_if_empty()
+
+    def seed_rag_if_empty(self) -> None:
+        """Agar rag_documents jadvali bo'sh bo'lsa, data/rag_seed.json dan precomputed RAG ma'lumotlarini yuklaydi."""
+        seed_path = Path(__file__).resolve().parent.parent / "data" / "rag_seed.json"
+        if not seed_path.is_file():
+            return
+
+        try:
+            import base64
+            with self.connect() as conn:
+                cnt = conn.execute("SELECT count(*) as c FROM rag_documents").fetchone()
+                if cnt and cnt["c"] > 0:
+                    return
+
+                with open(seed_path, "r", encoding="utf-8") as f:
+                    seed_data = json.load(f)
+
+                for doc in seed_data.get("documents", []):
+                    conn.execute(
+                        """INSERT INTO rag_documents(id, name, file_path, file_hash, total_pages, chunk_count, embedding_model, embedding_dim, is_active, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (
+                            doc["id"],
+                            doc["name"],
+                            doc.get("file_path", ""),
+                            doc.get("file_hash", ""),
+                            doc["total_pages"],
+                            doc["chunk_count"],
+                            doc.get("embedding_model", "nomic-ai/nomic-embed-text-v1.5"),
+                            doc.get("embedding_dim", 768),
+                            doc.get("is_active", 1),
+                            doc.get("created_at", "2026-08-21 00:00:00"),
+                        ),
+                    )
+
+                for chunk in seed_data.get("chunks", []):
+                    emb_bytes = base64.b64decode(chunk["embedding_b64"])
+                    conn.execute(
+                        """INSERT INTO rag_chunks(id, document_id, page_number, chunk_index, chunk_text, embedding)
+                        VALUES (?, ?, ?, ?, ?, ?)""",
+                        (
+                            chunk["id"],
+                            chunk["document_id"],
+                            chunk["page_number"],
+                            chunk["chunk_index"],
+                            chunk["chunk_text"],
+                            emb_bytes,
+                        ),
+                    )
+        except Exception:
+            pass
 
 
 
