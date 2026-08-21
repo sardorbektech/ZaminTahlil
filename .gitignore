@@ -1,21 +1,59 @@
+# Environment & Secrets
 .env
+.env.*
+!.env.example
+
+# Python virtual environments & bytecode
 .venv/
 venv/
+env/
 __pycache__/
 *.py[cod]
+*.class
+*.egg-info/
+dist/
+build/
+
+# Testing & Linting
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
-dist/
+.coverage
+htmlcov/
+
+# Databases & runtime data
 data/artifacts/
-data/*.sqlite3
+data/weather_cache/
+data/cache/
 data/*.sqlite3*
-*.egg-info/
-prompt.md
-.opencode/
-pyproject.toml
+data/*.db*
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
 *.db
 *.db-journal
 *.db-wal
 *.db-shm
-example code
+
+# Pickled cache files
+data/vectors/*.pkl
+data/chunks/*.pkl
+data/graph/*.pkl
+*.pkl
+
+# External / Example directories not part of ZaminTahlil core
+example code/
+example_code/
+example*/
+test_data/
+logs/
+*.log
+
+# Editor / Agent temporary files
+.idea/
+.vscode/
+*.swp
+*.swo
+prompt.md
+.opencode/
+scratch/
