@@ -1165,12 +1165,24 @@ function renderActiveBooksTags(bookNames) {
    ========================================================= */
 function populateYearSelect() {
   const sel = $("chartYear");
+  const fromDateInput = $("chartFromDate");
+  const currentYear = new Date().getFullYear();
+
+  if (fromDateInput && !fromDateInput.value) {
+    fromDateInput.value = `${currentYear}-01-01`;
+  }
+
   if (!sel) return;
   sel.innerHTML = "";
-  const currentYear = new Date().getFullYear();
   for (let y = currentYear; y >= currentYear - 3; y--) {
     sel.add(new Option(y.toString(), y.toString()));
   }
+
+  sel.addEventListener("change", () => {
+    if (fromDateInput) {
+      fromDateInput.value = `${sel.value}-01-01`;
+    }
+  });
 }
 
 async function loadAnnualChart(fieldId) {

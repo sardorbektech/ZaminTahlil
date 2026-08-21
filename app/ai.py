@@ -101,9 +101,9 @@ class AIClient:
         except (json.JSONDecodeError, KeyError, TypeError) as exc:
             raise AIError("AI tavsiya formatini noto'g'ri qaytardi") from exc
         labels = {
-            "red": "Qilinishi shart",
-            "yellow": "Chorasi ko'rilishi kerak",
-            "green": "Yaxshi jarayonlar",
+            "red": "🔴 Zudlik bilan qilinishi shart bo'lgan ishlar",
+            "yellow": "🟡 Diqqat va nazorat talab qiladigan holatlar",
+            "green": "🟢 Dalaning yaxshi va sog'lom rivojlanayotgan qismlari",
         }
         content = "\n\n".join(
             f"{labels[name]}:\n" + "\n".join(f"- {item}" for item in advice[name])
