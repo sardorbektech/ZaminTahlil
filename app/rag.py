@@ -663,7 +663,7 @@ class RAGService:
         scored.sort(key=lambda x: x[0], reverse=True)
         results: list[RAGChunk] = []
         for score, r in scored[:top_k]:
-            if score >= cutoff:
+            if score >= cutoff or (threshold is None and len(results) == 0):
                 results.append(
                     RAGChunk(
                         id=int(r["id"]),
@@ -784,7 +784,7 @@ class RAGService:
 
         final_chunks: list[RAGChunk] = []
         for comb, dense_s, r in reranked_results[:top_k]:
-            if comb >= cutoff:
+            if comb >= cutoff or (threshold is None and len(final_chunks) == 0):
                 final_chunks.append(
                     RAGChunk(
                         id=int(r["id"]),
@@ -805,12 +805,14 @@ class RAGService:
         query: str,
         database: Any,
         top_k: int = 30,
+        threshold: float | None = None,
         selected_doc_ids: list[int] | None = None,
     ) -> tuple[str, list[RAGChunk]]:
         """3. GRAPH RAG: Entity extraction + Scored graph search + BFS expansion."""
         graphs_file = self.graphs_dir / "extracted_graphs.pkl"
         if not graphs_file.exists():
-            return "", []
+            adv_chunks = self.search_advanced(query, database=database, top_k=2, threshold=threshold, selected_doc_ids=selected_doc_ids)
+            return "", adv_chunks
 
         try:
             with open(graphs_file, "rb") as f:
@@ -818,11 +820,13 @@ class RAGService:
                 if not isinstance(all_graphs, list):
                     all_graphs = [all_graphs]
         except Exception:
-            return "", []
+            adv_chunks = self.search_advanced(query, database=database, top_k=2, threshold=threshold, selected_doc_ids=selected_doc_ids)
+            return "", adv_chunks
 
         query_tokens = _tokenize(query)
         if not query_tokens:
-            return "", []
+            adv_chunks = self.search_advanced(query, database=database, top_k=2, threshold=threshold, selected_doc_ids=selected_doc_ids)
+            return "", adv_chunks
 
         scored_nodes: dict[str, tuple[float, Node, Graph]] = {}
         scored_edges: list[tuple[float, Edge, Graph]] = []
@@ -832,16 +836,17 @@ class RAGService:
                 continue
             for node in g.nodes:
                 sc = _score_node(node, query_tokens)
-                if sc >= 0.25:
+                if sc >= 0.20:
                     if node.id not in scored_nodes or sc > scored_nodes[node.id][0]:
                         scored_nodes[node.id] = (sc, node, g)
             for edge in g.edges:
                 sc = _score_edge(edge, query_tokens)
-                if sc >= 0.25:
+                if sc >= 0.20:
                     scored_edges.append((sc, edge, g))
 
         if not scored_nodes and not scored_edges:
-            return "", []
+            adv_chunks = self.search_advanced(query, database=database, top_k=2, threshold=threshold, selected_doc_ids=selected_doc_ids)
+            return "", adv_chunks
 
         graph_seeds: dict[int, set[str]] = defaultdict(set)
         for nid, (sc, node, g) in scored_nodes.items():
@@ -949,13 +954,13 @@ class RAGService:
         # 3 ta RAGni bir vaqtda parallel ishga tushiramiz
         with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
             fut_naive = executor.submit(
-                self.search_naive, query, database, top_k, cutoff, selected_doc_ids
+                self.search_naive, query, database, top_k, threshold, selected_doc_ids
             )
             fut_adv = executor.submit(
-                self.search_advanced, query, database, top_k, cutoff, selected_doc_ids
+                self.search_advanced, query, database, top_k, threshold, selected_doc_ids
             )
             fut_graph = executor.submit(
-                self.search_graph, query, database, 30, selected_doc_ids
+                self.search_graph, query, database, 30, threshold, selected_doc_ids
             )
 
             naive_chunks = fut_naive.result()
@@ -965,10 +970,10 @@ class RAGService:
         # Natijalarni birlashtirish va deduplikatsiya
         unique_chunks: dict[int, RAGChunk] = {}
         for c in adv_chunks:
-            if c.score >= cutoff:
+            if threshold is None or c.score >= cutoff:
                 unique_chunks[c.id] = c
         for c in naive_chunks:
-            if c.score >= cutoff and c.id not in unique_chunks:
+            if (threshold is None or c.score >= cutoff) and c.id not in unique_chunks:
                 unique_chunks[c.id] = c
 
         final_chunks = sorted(
@@ -991,10 +996,10 @@ class RAGService:
             rag_title = "🕸️ Graph RAG (Bilimlar Grafi)"
         else:
             rag_strat = "direct_llm"
-            rag_title = "🤖 Umumiy LLM Bilimlari"
+            rag_source_title = "🤖 Umumiy LLM Bilimlari"
 
         _safe_print(
-            f"   {_BOLD}🎯 [YAKUNIY RAG STRATEGIYASI]: {_GREEN}{rag_title}{_RESET} ({elapsed:.1f}ms)"
+            f"   {_BOLD}🎯 [YAKUNIY RAG STRATEGIYASI]: {_GREEN}{rag_title if 'rag_title' in locals() else '🤖 Umumiy LLM Bilimlari'}{_RESET} ({elapsed:.1f}ms)"
         )
         if final_chunks:
             for rank, c in enumerate(final_chunks, start=1):
@@ -1014,7 +1019,7 @@ class RAGService:
             elapsed_ms=round(elapsed, 2),
             step_logs=step_logs,
             rag_strategy=rag_strat,
-            rag_source_title=rag_title,
+            rag_source_title=rag_title if "rag_title" in locals() else "🤖 Umumiy LLM Bilimlari",
             graph_context=graph_context if has_graph else None,
         )
 
@@ -1028,14 +1033,37 @@ class RAGService:
         rag_mode: str = "all_in_one",
     ) -> list[RAGChunk]:
         """Universal qidiruv metodi — tanlangan strategiyaga mos RAG dvigatelini ishga tushiradi."""
-        cutoff = threshold if threshold is not None else self.similarity_threshold
         if rag_mode == "naive":
-            return self.search_naive(query, database, top_k, cutoff, selected_doc_ids)
+            return self.search_naive(
+                query,
+                database=database,
+                top_k=top_k,
+                threshold=threshold,
+                selected_doc_ids=selected_doc_ids,
+            )
         elif rag_mode == "graph":
-            _, chunks = self.search_graph(query, database, 30, selected_doc_ids)
+            _, chunks = self.search_graph(
+                query,
+                database=database,
+                top_k=top_k,
+                threshold=threshold,
+                selected_doc_ids=selected_doc_ids,
+            )
             return chunks
         elif rag_mode == "advanced":
-            return self.search_advanced(query, database, top_k, cutoff, selected_doc_ids)
-        else:
-            result = self.search_all_in_one(query, database, top_k, cutoff, selected_doc_ids)
-            return result.chunks
+            return self.search_advanced(
+                query,
+                database=database,
+                top_k=top_k,
+                threshold=threshold,
+                selected_doc_ids=selected_doc_ids,
+            )
+        else:  # all_in_one
+            res = self.search_all_in_one(
+                query,
+                database=database,
+                top_k=top_k,
+                threshold=threshold,
+                selected_doc_ids=selected_doc_ids,
+            )
+            return res.chunks

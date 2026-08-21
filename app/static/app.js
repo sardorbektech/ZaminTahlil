@@ -346,6 +346,12 @@ $("fieldForm")?.addEventListener("submit", async (e) => {
     return;
   }
 
+  const submitBtn = $("fieldForm")?.querySelector('button[type="submit"]');
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.classList.add("btn-loading");
+  }
+
   const payload = {
     geometry: state.draftGeoJSON,
     crop_name: $("cropName").value.trim(),
@@ -373,6 +379,11 @@ $("fieldForm")?.addEventListener("submit", async (e) => {
     await selectField(created.id);
   } catch (err) {
     showStatus("formMessage", err.message, "error");
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.classList.remove("btn-loading");
+    }
   }
 });
 
@@ -384,7 +395,10 @@ $("analyzeButton")?.addEventListener("click", async () => {
   const btn = $("analyzeButton");
   const mode = $("analysisMode").value;
   showStatus("analysisMessage", t("detail.msgAnalyzing"), "loading");
-  if (btn) btn.classList.add("btn-loading");
+  if (btn) {
+    btn.disabled = true;
+    btn.classList.add("btn-loading");
+  }
 
   try {
     const res = await apiFetch(`/api/fields/${state.selectedField.id}/analyze`, {
@@ -409,7 +423,10 @@ $("analyzeButton")?.addEventListener("click", async () => {
   } catch (err) {
     showStatus("analysisMessage", err.message, "error");
   } finally {
-    if (btn) btn.classList.remove("btn-loading");
+    if (btn) {
+      btn.disabled = false;
+      btn.classList.remove("btn-loading");
+    }
   }
 });
 
@@ -740,7 +757,10 @@ $("predictYieldBtn")?.addEventListener("click", async () => {
   const model_name = $("yieldModelSelect").value;
 
   showStatus("yieldMessage", t("yield.calculating"), "loading");
-  if (btn) btn.classList.add("btn-loading");
+  if (btn) {
+    btn.disabled = true;
+    btn.classList.add("btn-loading");
+  }
   try {
     const res = await apiFetch(`/api/fields/${state.selectedField.id}/predict-yield`, {
       method: "POST",
@@ -758,7 +778,10 @@ $("predictYieldBtn")?.addEventListener("click", async () => {
   } catch (err) {
     showStatus("yieldMessage", err.message, "error");
   } finally {
-    if (btn) btn.classList.remove("btn-loading");
+    if (btn) {
+      btn.disabled = false;
+      btn.classList.remove("btn-loading");
+    }
   }
 });
 
@@ -1097,7 +1120,10 @@ $("chatForm")?.addEventListener("submit", async (e) => {
   renderChatLog();
   inputEl.value = "";
 
-  if (sendBtn) sendBtn.classList.add("btn-loading");
+  if (sendBtn) {
+    sendBtn.disabled = true;
+    sendBtn.classList.add("btn-loading");
+  }
 
   // Session storage sync
   try {
@@ -1144,7 +1170,10 @@ $("chatForm")?.addEventListener("submit", async (e) => {
     });
     renderChatLog();
   } finally {
-    if (sendBtn) sendBtn.classList.remove("btn-loading");
+    if (sendBtn) {
+      sendBtn.disabled = false;
+      sendBtn.classList.remove("btn-loading");
+    }
   }
 });
 
@@ -1197,12 +1226,17 @@ async function loadAnnualChart(fieldId) {
 
 $("loadHistoryButton")?.addEventListener("click", async () => {
   if (!state.selectedField) return;
+  const btn = $("loadHistoryButton");
   const from_date = $("chartFromDate").value;
   if (!from_date) {
     showStatus("chartMessage", t("chart.msgChooseDate"), "error");
     return;
   }
 
+  if (btn) {
+    btn.disabled = true;
+    btn.classList.add("btn-loading");
+  }
   showStatus("chartMessage", t("chart.msgLoading", { date: from_date }), "loading");
   try {
     const res = await apiFetch(`/api/fields/${state.selectedField.id}/historical-metrics`, {
@@ -1223,6 +1257,11 @@ $("loadHistoryButton")?.addEventListener("click", async () => {
     renderAnnualChart(historyData.points || []);
   } catch (err) {
     showStatus("chartMessage", err.message, "error");
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.classList.remove("btn-loading");
+    }
   }
 });
 
@@ -1419,7 +1458,10 @@ $("ragUploadForm")?.addEventListener("submit", async (e) => {
   const file = fileInput.files[0];
 
   const uploadBtn = $("ragUploadBtn");
-  if (uploadBtn) uploadBtn.classList.add("btn-loading");
+  if (uploadBtn) {
+    uploadBtn.disabled = true;
+    uploadBtn.classList.add("btn-loading");
+  }
   showStatus("ragMessage", `"${file.name}" yuklanmoqda va 768-dim embedding hisoblanmoqda...`, "loading");
 
   const formData = new FormData();
@@ -1441,7 +1483,10 @@ $("ragUploadForm")?.addEventListener("submit", async (e) => {
   } catch (err) {
     showStatus("ragMessage", `❌ ${err.message}`, "error");
   } finally {
-    if (uploadBtn) uploadBtn.classList.remove("btn-loading");
+    if (uploadBtn) {
+      uploadBtn.disabled = false;
+      uploadBtn.classList.remove("btn-loading");
+    }
   }
 });
 
@@ -1474,7 +1519,10 @@ $("confirmPurgeBtn")?.addEventListener("click", async () => {
   }
 
   const btn = $("confirmPurgeBtn");
-  if (btn) btn.classList.add("btn-loading");
+  if (btn) {
+    btn.disabled = true;
+    btn.classList.add("btn-loading");
+  }
   showStatus("purgeMessage", "Baza tozalanmoqda...", "loading");
 
   try {
@@ -1522,7 +1570,10 @@ $("confirmPurgeBtn")?.addEventListener("click", async () => {
   } catch (err) {
     showStatus("purgeMessage", `❌ ${err.message}`, "error");
   } finally {
-    if (btn) btn.classList.remove("btn-loading");
+    if (btn) {
+      btn.disabled = false;
+      btn.classList.remove("btn-loading");
+    }
   }
 });
 
