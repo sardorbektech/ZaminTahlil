@@ -5,13 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       name="description"
-      content="ZaminTahlil — Dala chegaralari, Sentinel-2 sun'iy yo'ldosh tahlili, ML hosildorlik bashorati va RAG agronomik AI."
+      content="ZaminTahlil — Smart AgriTech Decision-Support Platform: Sentinel-2 satellite analytics, ML crop yield forecasting, and agronomic RAG AI."
     />
-    <title>ZaminTahlil — Aqlli Qishloq Xo‘jaligi Monitoringi</title>
+    <title>ZaminTahlil — Aqlli Qishloq Xo'jaligi Monitoringi</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
       rel="stylesheet"
     />
     <link
@@ -22,610 +22,809 @@
       rel="stylesheet"
       href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css"
     />
-    <link rel="stylesheet" href="/styles.css?v=20260821" />
+    <link rel="stylesheet" href="/styles.css?v=20260908" />
   </head>
   <body>
-    <div id="globalLoader"></div>
+    <div class="app-container">
+      <!-- 1. GLOBAL TOP HEADER -->
+      <header class="top-header">
+        <div class="header-left">
+          <a href="#" class="logo-link" id="brand-logo-link">
+            <img src="/logo.png" alt="ZaminTahlil Logo" />
+            <div class="brand-info">
+              <span class="brand-title" data-i18n="nav.brandName">ZaminTahlil</span>
+              <span class="brand-subtitle" data-i18n="nav.brandSub">Agro Intelligence Platform</span>
+            </div>
+          </a>
+        </div>
 
-    <div class="app-layout">
-      <!-- 1. TOPBAR -->
-      <header class="app-topbar">
-        <div class="brand-cluster">
-          <img src="logo.png" alt="ZaminTahlil Logo" class="brand-logo" />
-          <div>
-            <span class="brand-title" data-i18n="nav.brandName">ZaminTahlil</span>
-            <span class="brand-subtitle" data-i18n="nav.brandSub">Agro Intelligence Platform</span>
+        <div class="header-center">
+          <div class="current-field-pill" id="current-field-pill">
+            <span class="icon">🌾</span>
+            <span id="current-field-name" data-i18n="nav.noFieldSelected">Dala tanlanmagan</span>
           </div>
         </div>
 
-        <!-- Quick Stats Strip -->
-        <div class="top-stats-strip">
-          <div class="top-stat-item">
-            <span class="stat-lbl" data-i18n="stats.fields">Jami dalalar</span>
-            <strong id="fieldCount" class="stat-val">0</strong>
-          </div>
-          <div class="top-stat-item">
-            <span class="stat-lbl" data-i18n="stats.selectedArea">Tanlangan maydon</span>
-            <strong id="selectedAreaStat" class="stat-val">—</strong>
-          </div>
-          <div class="top-stat-item">
-            <span class="stat-lbl" data-i18n="stats.latestCapture">Oxirgi kuzatuv</span>
-            <strong id="latestCaptureStat" class="stat-val">—</strong>
-          </div>
-          <div class="top-stat-item">
-            <span class="stat-lbl" data-i18n="stats.expectedYield">Kutilayotgan hosil</span>
-            <strong id="expectedYieldStat" class="stat-val highlight">—</strong>
-          </div>
-        </div>
-
-        <div class="topbar-controls">
-          <button id="ragModalBtn" class="rag-button" type="button">
-            <span class="btn-icon">📚</span>
-            <span data-i18n="nav.ragBtn">Agronom Kutubxonasi</span>
-          </button>
-
-          <div class="status-badge" id="apiStatus" data-state="loading">
+        <div class="header-right">
+          <div class="status-indicator" id="system-status-indicator">
             <span class="status-dot"></span>
-            <span class="status-text" data-i18n="nav.statusLoading">Tekshirilmoqda...</span>
+            <span data-i18n="nav.statusOnline">Online</span>
           </div>
 
-          <div class="language-dropdown">
-            <select id="langSwitch" aria-label="Language Selector">
-              <option value="uz-latn">O'zbekcha (lotin)</option>
-              <option value="uz-cyrl">Ўзбекча (кирилл)</option>
-              <option value="ru">Русский</option>
-              <option value="en">English</option>
-            </select>
-          </div>
+          <select class="lang-selector-select" id="language-select" aria-label="Til tanlash">
+            <option value="uz-latn">O'zbekcha</option>
+            <option value="uz-cyrl">Ўзбекча</option>
+            <option value="ru">Русский</option>
+            <option value="en">English</option>
+          </select>
         </div>
       </header>
 
-      <!-- 2. MAIN CONTAINER (Sidebar + Workspace) -->
-      <div class="main-body">
-        <!-- SIDEBAR: Fields List & New Field Composer -->
-        <aside class="sidebar-panel">
-          <!-- Saved Fields Section -->
-          <div class="sidebar-section">
-            <div class="section-title-row">
-              <div style="display: flex; align-items: center; gap: 0.4rem;">
-                <span class="icon">🌾</span>
-                <h3 data-i18n="nav.fieldsTitle">Saqlangan dalalar</h3>
-                <span id="fieldsCountBadge" class="counter-badge">0</span>
-              </div>
-              <button id="purgeDbBtn" class="purge-db-btn" type="button" title="Barcha dalalarni tozalash (Parol: roziman)">
-                🗑️ Tozalash
-              </button>
+      <!-- 2. APP BODY (SIDEBAR + MAIN CONTENT) -->
+      <div class="app-body">
+        <!-- Sidebar Navigation -->
+        <aside class="app-sidebar">
+          <nav class="sidebar-nav">
+            <div class="nav-item active" data-view="dashboard" id="nav-dashboard">
+              <span class="nav-icon">🌍</span>
+              <span data-i18n="nav.dashboard">Dashboard</span>
             </div>
-            <div id="savedFieldsList" class="fields-cards-container">
-              <p class="muted-note" data-i18n="nav.noFields">Hozircha saqlangan dala yo'q. Xaritada polygon chizing.</p>
+            <div class="nav-item" data-view="fields" id="nav-fields">
+              <span class="nav-icon">🌾</span>
+              <span data-i18n="nav.fields">Mening dalalarim</span>
             </div>
-          </div>
-
-          <!-- New Field Creation Composer -->
-          <div class="sidebar-section composer-section">
-            <div class="section-title-row">
-              <span class="icon">✏️</span>
-              <h3 data-i18n="composer.title">Dala ma'lumotlarini kiriting</h3>
+            <div class="nav-item" data-view="satellite" id="nav-satellite">
+              <span class="nav-icon">🛰️</span>
+              <span data-i18n="nav.satellite">Sun'iy yo'ldosh</span>
             </div>
+            <div class="nav-item" data-view="monitoring" id="nav-monitoring">
+              <span class="nav-icon">📊</span>
+              <span data-i18n="nav.monitoring">Monitoring</span>
+            </div>
+            <div class="nav-item" data-view="yield" id="nav-yield">
+              <span class="nav-icon">🌱</span>
+              <span data-i18n="nav.yield">Hosildorlik</span>
+            </div>
+            <div class="nav-item" data-view="chat" id="nav-chat">
+              <span class="nav-icon">🤖</span>
+              <span data-i18n="nav.chat">AI Agronom</span>
+            </div>
+            <div class="nav-item" data-view="knowledge" id="nav-knowledge">
+              <span class="nav-icon">📚</span>
+              <span data-i18n="nav.knowledge">Bilimlar bazasi</span>
+            </div>
+            <div class="nav-item" data-view="settings" id="nav-settings">
+              <span class="nav-icon">⚙️</span>
+              <span data-i18n="nav.settings">Sozlamalar</span>
+            </div>
+          </nav>
 
-            <form id="fieldForm" class="composer-form">
-              <div class="form-group">
-                <label for="draftArea" data-i18n="composer.areaLabel">Hisoblangan maydon</label>
-                <output id="draftArea" class="area-output" data-i18n="composer.areaPlaceholder">Avval xaritada polygon chizing</output>
-              </div>
-
-              <div class="form-group">
-                <label for="cropName" data-i18n="composer.cropLabel">O'simlik yoki ekin nomi</label>
-                <input
-                  id="cropName"
-                  type="text"
-                  maxlength="120"
-                  required
-                  data-i18n-placeholder="composer.cropPlaceholder"
-                  placeholder="Masalan: Paxta yoki Bug'doy"
-                />
-              </div>
-
-              <div class="form-group">
-                <label for="plantedOn" data-i18n="composer.plantedLabel">Ekin ekilgan sana</label>
-                <input id="plantedOn" type="date" required />
-              </div>
-
-              <div class="form-group">
-                <label for="growthStage" data-i18n="composer.stageLabel">Rivojlanish bosqichi</label>
-                <input
-                  id="growthStage"
-                  type="text"
-                  maxlength="120"
-                  required
-                  data-i18n-placeholder="composer.stagePlaceholder"
-                  placeholder="Masalan: Gullash / Naychalash bosqichi"
-                />
-              </div>
-
-              <button class="primary-btn submit-btn" type="submit" data-i18n="composer.submit">
-                Dalani saqlash
-              </button>
-            </form>
-
-            <div id="formMessage" class="status-msg" role="status"></div>
+          <div class="sidebar-bottom">
+            <p>© 2026 ZaminTahlil</p>
+            <p>Sentinel-2 & AI Engine</p>
           </div>
         </aside>
 
-        <!-- WORKSPACE AREA: Map + Dynamic Tabs Hub -->
-        <main class="workspace-area">
-          <!-- 1. Interactive Map Card -->
-          <section class="map-container-card">
-            <div class="map-card-header">
-              <div class="map-header-left">
-                <span class="tag-pill" data-i18n="workspace.eyebrow">XARITA WORKSPACE</span>
-                <h2 data-i18n="workspace.title">Dala xaritasi va interaktiv ko'rinish</h2>
+        <!-- Main Content Area -->
+        <main class="app-main">
+          <!-- VIEW 1: DASHBOARD -->
+          <section id="view-dashboard" class="view-container active">
+            <div class="page-header">
+              <div>
+                <h1 class="page-title" data-i18n="dashboard.title">Umumiy Boshqaruv Paneli</h1>
+                <p class="page-subtitle" data-i18n="dashboard.subtitle">Barcha dalalar monitoringi, vegetatsiya ko'rsatkichlari va tezkor holat xulosasi.</p>
               </div>
-              <div class="map-status-info">
-                <strong id="selectionState" data-i18n="story.fieldNotSelected">Dala tanlanmagan</strong>
-                <span id="draftGuide" class="draft-tip" data-i18n="story.contourStart">Polygon chizishni boshlang</span>
-              </div>
+              <button class="btn btn-primary" id="btn-dash-add-field" type="button">
+                ➕ <span data-i18n="dashboard.addNewField">Yangi dala qo'shish</span>
+              </button>
             </div>
 
-            <div class="map-wrapper">
-              <div id="map" aria-label="Dala xaritasi"></div>
-            </div>
-          </section>
-
-          <!-- 2. Empty State (when no field is selected) -->
-          <section id="emptyState" class="empty-state-card">
-            <div class="empty-icon">🛰</div>
-            <h2 data-i18n="empty.title">Dala tanlanmagan</h2>
-            <p data-i18n="empty.copy">
-              Tahlil, hosildorlik bashorati va AI tavsiyalarini ko'rish uchun xaritadagi saqlangan dalani bosing yoki yangi dala qo'shing.
-            </p>
-          </section>
-
-          <!-- 3. Field Analysis Hub (Tabs-based Interface) -->
-          <section id="detail" class="field-hub-card hidden" aria-live="polite">
-            <!-- Banner Header -->
-            <div class="field-banner">
-              <div class="banner-title-block">
-                <span class="banner-tag" data-i18n="detail.eyebrow">TANLANGAN DALA</span>
-                <h2 id="fieldTitle" class="banner-heading">—</h2>
-                <p id="fieldMeta" class="banner-meta">—</p>
-              </div>
-
-              <div class="banner-actions">
-                <div class="analysis-select-wrap">
-                  <label for="analysisMode" data-i18n="detail.modeLabel">Tahlil rejimi</label>
-                  <select id="analysisMode">
-                    <option value="latest" data-i18n="detail.modeLatest">Oxirgi ma'lumot (Eng yangi)</option>
-                    <option value="latest_cloud_free" data-i18n="detail.modeLatestCloudFree">Oxirgi bulutsiz ma'lumot</option>
-                  </select>
+            <!-- 4 Top Metrics -->
+            <div class="metrics-grid">
+              <div class="metric-card">
+                <div class="metric-header">
+                  <span class="metric-label" data-i18n="dashboard.totalFields">Jami dalalar</span>
+                  <span class="metric-icon">🌾</span>
                 </div>
-                <button id="analyzeButton" class="primary-btn action-btn" type="button" data-i18n="detail.analyzeButton">
-                  Sun'iy yo'ldoshdan tahlil qilish
+                <div class="metric-value" id="dash-total-fields">0</div>
+                <div class="metric-sub" data-i18n="dashboard.viewAllFields">Barcha dalalarni ko'rish</div>
+              </div>
+
+              <div class="metric-card">
+                <div class="metric-header">
+                  <span class="metric-label" data-i18n="dashboard.totalArea">Jami maydon</span>
+                  <span class="metric-icon">📐</span>
+                </div>
+                <div class="metric-value" id="dash-total-area">0.00 ha</div>
+                <div class="metric-sub">WGS84 Geodezik</div>
+              </div>
+
+              <div class="metric-card">
+                <div class="metric-header">
+                  <span class="metric-label" data-i18n="dashboard.monitoringCoverage">Monitoring qamrovi</span>
+                  <span class="metric-icon">🛰️</span>
+                </div>
+                <div class="metric-value" id="dash-coverage">0%</div>
+                <div class="metric-sub">Sentinel-2 L2A</div>
+              </div>
+
+              <div class="metric-card">
+                <div class="metric-header">
+                  <span class="metric-label" data-i18n="dashboard.avgYield">O'rtacha hosil</span>
+                  <span class="metric-icon">🌱</span>
+                </div>
+                <div class="metric-value" id="dash-avg-yield">—</div>
+                <div class="metric-sub">CatBoost ML modeli</div>
+              </div>
+            </div>
+
+            <!-- Recent Activity / Fields overview -->
+            <div class="card">
+              <div class="panel-title">
+                <span data-i18n="dashboard.recentActivity">Oxirgi faolliklar</span>
+                <button class="btn btn-secondary btn-sm" id="btn-dash-view-all-fields" type="button" data-i18n="dashboard.viewAllFields">
+                  Barchasini ko'rish
                 </button>
               </div>
+              <div class="fields-grid" id="dash-recent-list">
+                <!-- Dynamically filled -->
+              </div>
+            </div>
+          </section>
 
-              <div id="analysisMessage" class="status-msg banner-msg" role="status"></div>
+          <!-- VIEW 2: FIELDS MANAGEMENT -->
+          <section id="view-fields" class="view-container">
+            <div class="page-header">
+              <div>
+                <h1 class="page-title" data-i18n="fields.title">Mening Dalalarim</h1>
+                <p class="page-subtitle" data-i18n="fields.subtitle">Ro'yxatdan kerakli dalani tanlang yoki yangi hudud chegarasini chizing.</p>
+              </div>
+              <button class="btn btn-primary" id="btn-open-field-wizard" type="button">
+                ➕ <span data-i18n="fields.newFieldBtn">Yangi dala chizish</span>
+              </button>
             </div>
 
-            <!-- Tabs Navigation Bar -->
-            <nav class="hub-tabs-nav" role="tablist">
-              <button class="tab-btn active" data-tab="tab-satellite" role="tab" type="button">
-                <span data-i18n="tabs.satellite">🛰 Sun'iy Yo'ldosh & Qatlamlar</span>
-              </button>
-              <button class="tab-btn" data-tab="tab-yield" role="tab" type="button">
-                <span data-i18n="tabs.yield">🌾 Hosildorlik Bashorati (ML)</span>
-              </button>
-              <button class="tab-btn" data-tab="tab-advice" role="tab" type="button">
-                <span data-i18n="tabs.advice">🧠 AI Tavsiyalari</span>
-              </button>
-              <button class="tab-btn" data-tab="tab-chat" role="tab" type="button">
-                <span data-i18n="tabs.chat">💬 Agro-AI Chat & Xulosa</span>
-              </button>
-              <button class="tab-btn" data-tab="tab-trends" role="tab" type="button">
-                <span data-i18n="tabs.trends">📈 Yillik & Tarixiy Dinamika</span>
-              </button>
-            </nav>
-
-            <!-- TAB 1: SATELLITE IMAGERY & A/B VIEWER -->
-            <div id="tab-satellite" class="tab-content active">
-              <div class="viewer-toolbar">
-                <div class="compare-switch-wrap">
-                  <label class="switch-container">
-                    <input id="compareToggle" type="checkbox" />
-                    <span class="switch-slider"></span>
-                    <strong data-i18n="viewer.compareLabel">A/B Solishtirish rejimi</strong>
-                  </label>
-                </div>
-
-                <div class="viewer-selectors-row">
-                  <fieldset class="selector-fieldset">
-                    <legend data-i18n="viewer.legendA">A tasvir (Asosiy)</legend>
-                    <div class="nav-control-pair">
-                      <button id="prevLayerA" type="button" data-i18n-title="viewer.prevLayer" title="Oldingi qatlam">←</button>
-                      <select id="layerA"></select>
-                      <button id="nextLayerA" type="button" data-i18n-title="viewer.nextLayer" title="Keyingi qatlam">→</button>
-                    </div>
-                    <div class="nav-control-pair">
-                      <button id="prevDateA" type="button" data-i18n-title="viewer.prevDate" title="Oldingi sana">←</button>
-                      <select id="dateA"></select>
-                      <button id="nextDateA" type="button" data-i18n-title="viewer.nextDate" title="Keyingi sana">→</button>
-                    </div>
-                  </fieldset>
-
-                  <fieldset id="bControls" class="selector-fieldset hidden">
-                    <legend data-i18n="viewer.legendB">B tasvir (Taqqoslov)</legend>
-                    <div class="nav-control-pair">
-                      <button id="prevLayerB" type="button" data-i18n-title="viewer.prevLayer" title="Oldingi qatlam">←</button>
-                      <select id="layerB"></select>
-                      <button id="nextLayerB" type="button" data-i18n-title="viewer.nextLayer" title="Keyingi qatlam">→</button>
-                    </div>
-                    <div class="nav-control-pair">
-                      <button id="prevDateB" type="button" data-i18n-title="viewer.prevDate" title="Oldingi sana">←</button>
-                      <select id="dateB"></select>
-                      <button id="nextDateB" type="button" data-i18n-title="viewer.nextDate" title="Keyingi sana">→</button>
-                    </div>
-                  </fieldset>
-                </div>
+            <div class="fields-toolbar">
+              <input
+                type="text"
+                class="search-input"
+                id="fields-search-input"
+                placeholder="Dala yoki ekin nomini qidirish..."
+                data-i18n-placeholder="fields.searchPlaceholder"
+              />
+              <div class="filters-group">
+                <button class="btn-filter active" data-filter="all" id="filter-all" data-i18n="fields.filterAll">Barchasi</button>
+                <button class="btn-filter" data-filter="good" id="filter-good" data-i18n="fields.filterGood">🟢 Yaxshi</button>
+                <button class="btn-filter" data-filter="attention" id="filter-attention" data-i18n="fields.filterAttention">🟡 Diqqat</button>
+                <button class="btn-filter" data-filter="problem" id="filter-problem" data-i18n="fields.filterProblem">🔴 Muammo</button>
               </div>
-
-              <!-- Interactive Satellite Map Container -->
-              <div id="viewerWrap" class="viewer-map-box loading">
-                <div id="imageMap" aria-label="Sentinel tasvir ko'ruvchisi"></div>
-                <span class="viewer-side-badge badge-a">A</span>
-                <span id="labelB" class="viewer-side-badge badge-b hidden">B</span>
-                <div id="viewerState" class="viewer-overlay-message">Acquisition mavjud emas</div>
-                <input id="swipe" class="swipe-range-slider hidden" type="range" min="5" max="95" value="50" aria-label="A/B divider" />
-              </div>
-
-              <div id="mobileCompare" class="mobile-compare-row hidden">
-                <button data-side="A" type="button" data-i18n="viewer.mobileA">A ni ko'rsatish</button>
-                <button data-side="B" type="button" data-i18n="viewer.mobileB">B ni ko'rsatish</button>
-              </div>
-
-              <!-- Viewer options & stats footer -->
-              <div class="viewer-footer-row">
-                <div class="viewer-options-cluster">
-                  <label class="slider-label">
-                    <span data-i18n="viewer.opacityLabel">Shaffoflik</span>
-                    <input id="opacity" type="range" min="10" max="100" value="100" />
-                  </label>
-                  <label class="checkbox-label">
-                    <input id="qaToggle" type="checkbox" />
-                    <span data-i18n="viewer.qaLabel">QA / Bulut maskasi</span>
-                  </label>
-                </div>
-
-                <div id="legend" class="index-gradient-legend hidden">
-                  <span>-1.0</span>
-                  <div class="gradient-bar"></div>
-                  <span>0.0</span>
-                  <div class="gradient-bar"></div>
-                  <span>+1.0</span>
-                </div>
-              </div>
-
-              <div id="imageMeta" class="image-meta-grid"></div>
             </div>
 
-            <!-- TAB 2: CROP YIELD PREDICTION & PHENOLOGY -->
-            <div id="tab-yield" class="tab-content">
-              <div class="yield-control-header">
-                <div class="yield-inputs-row">
-                  <div class="select-field">
-                    <label for="yieldCropSelect" data-i18n="yield.cropLabel">Ekin turi</label>
-                    <select id="yieldCropSelect">
-                      <option value="cotton">Paxta (G'o'za)</option>
-                      <option value="wheat">Kuzgi Bug'doy</option>
-                    </select>
+            <div class="fields-grid" id="fields-cards-container">
+              <!-- Dynamically populated -->
+            </div>
+          </section>
+
+          <!-- VIEW 3: SATELLITE ANALYSIS -->
+          <section id="view-satellite" class="view-container">
+            <div class="page-header">
+              <div>
+                <h1 class="page-title" data-i18n="satellite.title">Sun'iy Yo'ldosh Tahlillari & Xaritalar</h1>
+                <p class="page-subtitle" data-i18n="satellite.subtitle">Sentinel-2 multispektral tasvirlari, vegetatsiya indekslari va A/B taqqoslash.</p>
+              </div>
+              <div style="display: flex; gap: 10px; align-items: center;">
+                <select class="form-control" id="select-analysis-mode" style="width: auto;">
+                  <option value="latest" data-i18n="satellite.modeLatest">Oxirgi ma'lumot</option>
+                  <option value="cloud_free" data-i18n="satellite.modeCloudFree">Oxirgi bulutsiz ma'lumot</option>
+                </select>
+                <button class="btn btn-primary" id="btn-run-analysis" type="button">
+                  🛰️ <span data-i18n="satellite.btnAnalyze">Sun'iy yo'ldoshdan tahlil qilish</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="satellite-layout">
+              <!-- Left: Map & Controls -->
+              <div>
+                <div class="map-wrapper">
+                  <div id="satellite-map" aria-label="Dala xaritasi"></div>
+
+                  <!-- Floating Layer Chips -->
+                  <div class="map-floating-bar" id="floating-layers-bar">
+                    <button class="layer-chip" data-layer="RGB">RGB</button>
+                    <button class="layer-chip active" data-layer="NDVI">NDVI</button>
+                    <button class="layer-chip" data-layer="NDMI">NDMI</button>
+                    <button class="layer-chip" data-layer="NDRE">NDRE</button>
+                    <button class="layer-chip" data-layer="EVI">EVI</button>
+                    <button class="layer-chip" data-layer="BSI">BSI</button>
+                    <button class="layer-chip" data-layer="QA">QA</button>
                   </div>
 
-                  <div class="select-field">
-                    <label for="yieldModelSelect" data-i18n="yield.modelLabel">ML Modeli</label>
-                    <select id="yieldModelSelect">
-                      <option value="CatBoost">CatBoost Regressor</option>
-                      <option value="LightGBM">LightGBM Regressor</option>
-                      <option value="XGBoost">XGBoost Regressor</option>
-                      <option value="RandomForest">Random Forest Regressor</option>
-                      <option value="GradientBoosting">Gradient Boosting Regressor</option>
-                    </select>
+                  <!-- Legend -->
+                  <div class="map-legend" id="map-legend">
+                    <div id="legend-layer-name">NDVI</div>
+                    <div class="legend-bar"></div>
+                    <div class="legend-labels">
+                      <span id="legend-min">0.0</span>
+                      <span id="legend-max">1.0</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- A/B Swipe Viewer Panel -->
+                <div class="swipe-controls-panel" id="swipe-controls-panel">
+                  <div style="display: flex; align-items: center; gap: 10px;">
+                    <input type="checkbox" id="compare-toggle" style="width: 18px; height: 18px; cursor: pointer;" />
+                    <label for="compare-toggle" style="font-weight: 700; font-size: 0.9rem; cursor: pointer;" data-i18n="satellite.compareHeading">
+                      A/B Solishtirish rejimi
+                    </label>
                   </div>
 
-                  <button id="predictYieldBtn" class="primary-btn yield-action-btn" type="button" data-i18n="yield.predictBtn">
-                    🌾 Hosilni hisoblash
+                  <div class="swipe-slider-container" id="swipe-slider-box" style="display: none;">
+                    <select class="form-control" id="compare-layer-a" style="font-size: 0.82rem; padding: 6px 10px;">
+                      <option value="RGB">RGB</option>
+                      <option value="NDVI" selected>NDVI</option>
+                      <option value="NDMI">NDMI</option>
+                      <option value="NDRE">NDRE</option>
+                      <option value="EVI">EVI</option>
+                      <option value="BSI">BSI</option>
+                      <option value="QA">QA</option>
+                    </select>
+                    <input type="range" min="0" max="100" value="50" class="swipe-range-input" id="swipe-range" />
+                    <select class="form-control" id="compare-layer-b" style="font-size: 0.82rem; padding: 6px 10px;">
+                      <option value="RGB">RGB</option>
+                      <option value="NDVI">NDVI</option>
+                      <option value="NDMI" selected>NDMI</option>
+                      <option value="NDRE">NDRE</option>
+                      <option value="EVI">EVI</option>
+                      <option value="BSI">BSI</option>
+                      <option value="QA">QA</option>
+                    </select>
+                  </div>
+                  <span style="font-size: 0.78rem; color: var(--color-text-muted);" data-i18n="satellite.swipeHelp">
+                    Tasvirlarni taqqoslash uchun markaziy chiziqni suring
+                  </span>
+                </div>
+
+                <!-- Hotspot Alert Card -->
+                <div class="card" id="hotspot-info-card" style="margin-top: 16px; display: none; border-left: 4px solid var(--color-danger);">
+                  <div class="panel-title" style="color: var(--color-danger);" data-i18n="satellite.hotspotHeading">
+                    ⚠️ Eng Past NDRE O'chog'i (Hotspot)
+                  </div>
+                  <p id="hotspot-coords-text" style="font-size: 0.85rem; font-weight: 600;"></p>
+                  <p style="font-size: 0.82rem; color: var(--color-text-muted); margin-top: 4px;" data-i18n="satellite.hotspotDesc">
+                    Ushbu nuqtada xlorofill va azot taqchilligi aniqlandi. Joyiga borib tekshirish tavsiya etiladi.
+                  </p>
+                </div>
+
+                <!-- Recommendations Section -->
+                <div class="card" style="margin-top: 16px;">
+                  <div class="panel-title" data-i18n="recommendation.heading">
+                    🧠 AI Agronomik Tavsiyalar
+                  </div>
+                  <div class="advice-groups-container" id="satellite-advice-container">
+                    <p style="font-size: 0.88rem; color: var(--color-text-muted);" data-i18n="recommendation.noAdvice">
+                      Ushbu tahlil bo'yicha alohida ogohlantirishlar aniqlanmadi.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Right: Side Panel (Acquisitions & Stats) -->
+              <div class="satellite-side-panel">
+                <!-- Acquisitions List -->
+                <div class="panel-card">
+                  <div class="panel-title" data-i18n="satellite.acquisitionHeading">Kuzatuv sanalari</div>
+                  <p style="font-size: 0.75rem; color: var(--color-text-muted); margin-bottom: 8px;" data-i18n="satellite.singleAcquisitionPerDayNote">
+                    1 kunda faqat bitta eng kam bulutli tasvir olinadi.
+                  </p>
+                  <div class="acquisitions-list" id="acquisitions-list-container">
+                    <p style="font-size: 0.85rem; color: var(--color-text-muted);" data-i18n="satellite.noAcquisitions">
+                      Hali tahlillar mavjud emas.
+                    </p>
+                  </div>
+                </div>
+
+                <!-- Pixel & Artifact Statistics -->
+                <div class="panel-card" id="artifact-stats-card">
+                  <div class="panel-title" data-i18n="satellite.statsHeading">Piksel & Artefakt Statistikasi</div>
+                  <div class="stat-row">
+                    <span class="stat-label" data-i18n="satellite.statMean">O'rtacha:</span>
+                    <span class="stat-val" id="stat-mean">—</span>
+                  </div>
+                  <div class="stat-row">
+                    <span class="stat-label" data-i18n="satellite.statMedian">Median:</span>
+                    <span class="stat-val" id="stat-median">—</span>
+                  </div>
+                  <div class="stat-row">
+                    <span class="stat-label" data-i18n="satellite.statMin">Minimal:</span>
+                    <span class="stat-val" id="stat-min">—</span>
+                  </div>
+                  <div class="stat-row">
+                    <span class="stat-label" data-i18n="satellite.statMax">Maksimal:</span>
+                    <span class="stat-val" id="stat-max">—</span>
+                  </div>
+                  <div class="stat-row">
+                    <span class="stat-label" data-i18n="satellite.statPixels">Yaroqli piksellar:</span>
+                    <span class="stat-val" id="stat-pixels">—</span>
+                  </div>
+                  <div class="stat-row">
+                    <span class="stat-label">Product ID:</span>
+                    <span class="stat-val" id="stat-product-id" style="font-size: 0.72rem; word-break: break-all;">—</span>
+                  </div>
+                  <div class="stat-row">
+                    <span class="stat-label">Render Version:</span>
+                    <span class="stat-val" id="stat-render-version">—</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- VIEW 4: MONITORING & TIMELINES -->
+          <section id="view-monitoring" class="view-container">
+            <div class="page-header">
+              <div>
+                <h1 class="page-title" data-i18n="monitoring.title">Monitoring & Dinamik Grafiklar</h1>
+                <p class="page-subtitle" data-i18n="monitoring.subtitle">Vegetatsiya va namlik indekslarining vaqt bo'yicha o'zgarish dinamikasi.</p>
+              </div>
+            </div>
+
+            <div class="card">
+              <!-- Range & Filter Controls -->
+              <div class="chart-controls-bar">
+                <div style="display: flex; gap: 8px;">
+                  <button class="btn btn-secondary btn-sm" id="btn-range-30d" type="button" data-i18n="monitoring.preset30d">30 kun</button>
+                  <button class="btn btn-secondary btn-sm" id="btn-range-90d" type="button" data-i18n="monitoring.preset90d">90 kun</button>
+                  <button class="btn btn-secondary btn-sm" id="btn-range-season" type="button" data-i18n="monitoring.presetSeason">Mavsum</button>
+                  <button class="btn btn-secondary btn-sm" id="btn-range-year" type="button" data-i18n="monitoring.presetYear">Yil</button>
+                </div>
+
+                <div class="date-pickers-group">
+                  <label for="chartFromDate" style="font-size: 0.85rem; font-weight: 600;" data-i18n="monitoring.dateFrom">Boshlanish:</label>
+                  <input type="date" class="date-input" id="chartFromDate" />
+                  <label for="chartToDate" style="font-size: 0.85rem; font-weight: 600;" data-i18n="monitoring.dateTo">Tugash:</label>
+                  <input type="date" class="date-input" id="chartToDate" />
+                  <button class="btn btn-primary btn-sm" id="loadHistoryButton" type="button" data-i18n="monitoring.btnLoad">
+                    Yuklash
+                  </button>
+                </div>
+              </div>
+
+              <!-- Indices selection -->
+              <div style="display: flex; gap: 16px; margin-bottom: 16px; flex-wrap: wrap;">
+                <label style="display: flex; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: 600; cursor: pointer;">
+                  <input type="checkbox" id="chk-metric-ndvi" checked /> NDVI
+                </label>
+                <label style="display: flex; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: 600; cursor: pointer;">
+                  <input type="checkbox" id="chk-metric-ndmi" checked /> NDMI
+                </label>
+                <label style="display: flex; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: 600; cursor: pointer;">
+                  <input type="checkbox" id="chk-metric-ndre" checked /> NDRE
+                </label>
+                <label style="display: flex; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: 600; cursor: pointer;">
+                  <input type="checkbox" id="chk-metric-evi" checked /> EVI
+                </label>
+                <label style="display: flex; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: 600; cursor: pointer;">
+                  <input type="checkbox" id="chk-metric-bsi" checked /> BSI
+                </label>
+              </div>
+
+              <!-- Chart.js Canvas Container -->
+              <div class="chart-wrapper">
+                <canvas id="monitoring-history-chart"></canvas>
+              </div>
+            </div>
+          </section>
+
+          <!-- VIEW 5: YIELD PREDICTION -->
+          <section id="view-yield" class="view-container">
+            <div class="page-header">
+              <div>
+                <h1 class="page-title" data-i18n="yield.title">Hosildorlik Bashorati (Machine Learning)</h1>
+                <p class="page-subtitle" data-i18n="yield.subtitle">Ko'p manbali ML modellari yordamida hosildorlikni hisoblash va ta'sir omillari tahlili.</p>
+              </div>
+            </div>
+
+            <!-- Hero Metric Card -->
+            <div class="yield-hero-card">
+              <div class="yield-hero-main">
+                <span class="yield-hero-label" data-i18n="yield.heroTitle">Kutilayotgan Hosildorlik</span>
+                <span class="yield-hero-value" id="yield-hero-val">— t/ga</span>
+                <span class="yield-hero-sub" id="yield-hero-interval" data-i18n="yield.heroInterval">Ishonch oralig'i: —</span>
+              </div>
+              <div style="text-align: right;">
+                <span style="font-size: 0.85rem; opacity: 0.85;" data-i18n="yield.heroTotal">Jami kutilayotgan hosil:</span>
+                <div style="font-size: 2rem; font-weight: 800;" id="yield-hero-total">— tonna</div>
+                <span style="font-size: 0.82rem; opacity: 0.8;" id="yield-hero-area">—</span>
+              </div>
+            </div>
+
+            <!-- Form & Features Grid -->
+            <div class="yield-grid">
+              <!-- Left: Form & Phenology -->
+              <div>
+                <div class="card" style="margin-bottom: 24px;">
+                  <div class="panel-title">Hosil Bashorati Parametrlari</div>
+                  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px;">
+                    <div class="form-group">
+                      <label class="form-label" for="yield-model-select" data-i18n="yield.modelLabel">ML Modeli</label>
+                      <select class="form-control" id="yield-model-select">
+                        <option value="CatBoost">CatBoost (Gradient Boosting)</option>
+                        <option value="RandomForest">Random Forest</option>
+                        <option value="XGBoost">XGBoost</option>
+                      </select>
+                    </div>
+
+                    <div class="form-group">
+                      <label class="form-label" for="yield-crop-select" data-i18n="yield.cropLabel">Ekin turi</label>
+                      <select class="form-control" id="yield-crop-select">
+                        <option value="cotton" data-i18n="yield.cropCotton">Paxta</option>
+                        <option value="wheat" data-i18n="yield.cropWheat">Bug'doy</option>
+                      </select>
+                    </div>
+
+                    <div class="form-group">
+                      <label class="form-label" for="yield-planting-date" data-i18n="yield.plantingDateLabel">Ekish sanasi</label>
+                      <input type="date" class="form-control" id="yield-planting-date" />
+                    </div>
+
+                    <div class="form-group">
+                      <label class="form-label" for="yield-harvest-date" data-i18n="yield.harvestDateLabel">Hosil sanasi</label>
+                      <input type="date" class="form-control" id="yield-harvest-date" />
+                    </div>
+                  </div>
+
+                  <button class="btn btn-primary" id="btn-run-yield-predict" type="button" style="margin-top: 20px; width: 100%;">
+                    🌱 <span data-i18n="yield.btnPredict">Hosilni bashorat qilish</span>
                   </button>
                 </div>
 
-                <div id="yieldMessage" class="status-msg yield-status-msg" role="status"></div>
+                <!-- Phenology Timeline -->
+                <div class="card">
+                  <div class="panel-title" data-i18n="yield.phenologyTitle">Mavsumiy Fenologiya Dinamikasi</div>
+                  <div style="height: 320px; position: relative;">
+                    <canvas id="yield-phenology-chart"></canvas>
+                  </div>
+                </div>
               </div>
 
-              <!-- Results Box -->
-              <div id="yieldResultsWrap" class="yield-results-container hidden">
-                <!-- 3 Big Metric Cards -->
-                <div class="yield-cards-row">
-                  <article class="yield-stat-card primary-gradient">
-                    <div class="card-top">
-                      <span class="card-icon">🌱</span>
-                      <span class="card-lbl" data-i18n="yield.yieldPerHa">1 Gektar hosildorligi</span>
-                    </div>
-                    <div class="card-main-val">
-                      <strong id="yieldPerHaVal" class="big-digit">—</strong>
-                      <span class="val-unit">t/ga</span>
-                    </div>
-                    <p id="yieldPerHaRange" class="card-sub-val">Oraliq: —</p>
-                  </article>
-
-                  <article class="yield-stat-card secondary-gradient">
-                    <div class="card-top">
-                      <span class="card-icon">📦</span>
-                      <span class="card-lbl" data-i18n="yield.totalYield">Dalaning umumiy hosili</span>
-                    </div>
-                    <div class="card-main-val">
-                      <strong id="totalYieldVal" class="big-digit">—</strong>
-                      <span class="val-unit">tonna</span>
-                    </div>
-                    <p id="totalYieldRange" class="card-sub-val">Oraliq: —</p>
-                  </article>
-
-                  <article class="yield-stat-card meta-gradient">
-                    <div class="card-top">
-                      <span class="card-icon">⚡</span>
-                      <span class="card-lbl">Model va Xususiyatlar</span>
-                    </div>
-                    <strong id="yieldModelUsed" class="model-badge">—</strong>
-                    <p id="yieldMetaSub" class="card-sub-val">—</p>
-                  </article>
-                </div>
-
-                <!-- Data Sources Strip (Bashorat manbalari) -->
-                <div class="yield-sources-box">
-                  <div class="sources-header-row">
-                    <div class="sources-title">
-                      <span class="icon">🛰️</span>
-                      <strong>Bashorat uchun tahlil qilingan manbalar:</strong>
-                    </div>
-                    <span id="yieldSourcesBadge" class="sources-pill-count">4 ta manba</span>
-                  </div>
-                  <div id="yieldSourcesStrip" class="yield-sources-grid"></div>
-                </div>
-
-                <!-- Deep Analytics Grid (Features + Phenology) -->
-                <div class="yield-analytics-grid">
-                  <!-- Feature Importance Card -->
-                  <div class="analytics-card features-box">
-                    <div class="card-header-row">
-                      <span class="icon">📊</span>
-                      <h3 data-i18n="yield.featuresTitle">Eng muhim ta'sir etuvchi omillar (Top Features)</h3>
-                    </div>
-                    <div id="yieldFeaturesList" class="features-bars-list"></div>
-                  </div>
-
-                  <!-- Seasonal Phenology Card -->
-                  <div class="analytics-card phenology-box">
-                    <div class="card-header-row">
-                      <span class="icon">📅</span>
-                      <h3 data-i18n="yield.timelineTitle">Mavsumiy fenologiya va ob-havo dinamikasi</h3>
-                    </div>
-
-                    <!-- Phenology Chart -->
-                    <div class="phenology-chart-container">
-                      <canvas id="phenologyChartCanvas"></canvas>
-                    </div>
-
-                    <!-- Phenology Data Table -->
-                    <div class="phenology-table-scroll">
-                      <table class="styled-data-table">
-                        <thead>
-                          <tr>
-                            <th data-i18n="yield.monthCol">Oy</th>
-                            <th data-i18n="yield.ndviCol">NDVI</th>
-                            <th data-i18n="yield.eviCol">EVI</th>
-                            <th data-i18n="yield.ndreCol">NDRE</th>
-                            <th data-i18n="yield.vhCol">S1 Radar VH</th>
-                            <th data-i18n="yield.tempCol">Harorat</th>
-                            <th data-i18n="yield.rainCol">Yog'in</th>
-                            <th data-i18n="yield.soilMoistureCol">Tuproq namligi</th>
-                          </tr>
-                        </thead>
-                        <tbody id="phenologyTableBody"></tbody>
-                      </table>
-                    </div>
+              <!-- Right: Top Features -->
+              <div>
+                <div class="card">
+                  <div class="panel-title" data-i18n="yield.topFeaturesTitle">Eng Muhim Ta'sir Omillari</div>
+                  <div class="features-list" id="yield-features-container">
+                    <p style="font-size: 0.85rem; color: var(--color-text-muted);">
+                      Bashorat hisoblangandan so'ng omillar chiqadi.
+                    </p>
                   </div>
                 </div>
               </div>
             </div>
 
-            <!-- TAB 3: AI ADVICE -->
-            <div id="tab-advice" class="tab-content">
-              <div class="advice-header-block">
-                <span class="tag-pill" data-i18n="recommendation.eyebrow">AI AGRONOMIK XULOSA</span>
-                <h3 data-i18n="recommendation.title">Dalaga amaliy tavsiyalar</h3>
+            <!-- Data Sources Cards -->
+            <div class="panel-title" style="margin-top: 28px;" data-i18n="yield.dataSourcesTitle">
+              Bashorat Uchun Foydalanilgan Ma'lumot Manbalari
+            </div>
+            <div class="data-sources-grid" id="yield-data-sources-container">
+              <!-- Dynamically populated 4 sources -->
+            </div>
+          </section>
+
+          <!-- VIEW 6: AI AGRONOM CHAT -->
+          <section id="view-chat" class="view-container">
+            <div class="page-header">
+              <div>
+                <h1 class="page-title" data-i18n="chat.title">AI Agronom Maslahatchisi</h1>
+                <p class="page-subtitle" data-i18n="chat.subtitle">Dala ma'lumotlari, sun'iy yo'ldosh tahlili va agronomik kitoblarga asoslangan AI muloqot.</p>
               </div>
-              <div id="recommendation" class="advice-cards-wrapper">
-                <p class="muted-note" data-i18n="recommendation.placeholder">
-                  Sun'iy yo'ldosh tahlilidan so'ng amaliy tavsiyalar shu yerda ko'rinadi.
+            </div>
+
+            <div class="chat-layout">
+              <!-- Left: Chat Messages Area -->
+              <div class="chat-main-card">
+                <div class="chat-header">
+                  <div class="rag-select-group">
+                    <span data-i18n="chat.ragMode">AI Rejimi:</span>
+                    <select class="form-control" id="chat-rag-mode-select" style="font-size: 0.82rem; padding: 4px 8px;">
+                      <option value="advanced" data-i18n="chat.ragAdvanced">🔬 Advanced RAG</option>
+                      <option value="all_in_one" data-i18n="chat.ragAllInOne">⚡ All-in-One</option>
+                      <option value="graph" data-i18n="chat.ragGraph">🕸️ Graph RAG</option>
+                      <option value="naive" data-i18n="chat.ragNaive">📚 Naive RAG</option>
+                      <option value="direct_llm" data-i18n="chat.ragDirectLlm">🤖 Umumiy LLM</option>
+                      <option value="auto" data-i18n="chat.ragAuto">✨ Avtomatik</option>
+                    </select>
+                  </div>
+
+                  <button class="btn btn-secondary btn-sm" id="btn-open-chat-sources" type="button">
+                    📚 <span data-i18n="chat.sourcesTitle">Manbalar</span>
+                  </button>
+                </div>
+
+                <div class="chat-messages-container" id="chat-messages-feed">
+                  <!-- Messages dynamically rendered -->
+                </div>
+
+                <div class="chat-input-bar">
+                  <input
+                    type="text"
+                    class="chat-input"
+                    id="chat-message-input"
+                    placeholder="Savolingizni yozing... (masalan: Bargdagi sarg'ayish sababi nima?)"
+                    data-i18n-placeholder="chat.placeholder"
+                  />
+                  <button class="btn btn-primary" id="btn-chat-send" type="button">
+                    ➤ <span data-i18n="chat.btnSend">Yuborish</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Right: Field Context & Summary -->
+              <div style="display: flex; flex-direction: column; gap: 20px;">
+                <div class="card">
+                  <div class="panel-title" data-i18n="chat.contextTitle">Dala konteksti</div>
+                  <div class="stat-row">
+                    <span class="stat-label">Ekin:</span>
+                    <span class="stat-val" id="chat-ctx-crop">—</span>
+                  </div>
+                  <div class="stat-row">
+                    <span class="stat-label">Maydon:</span>
+                    <span class="stat-val" id="chat-ctx-area">—</span>
+                  </div>
+                  <div class="stat-row">
+                    <span class="stat-label">Oxirgi NDVI:</span>
+                    <span class="stat-val" id="chat-ctx-ndvi">—</span>
+                  </div>
+                  <div class="stat-row">
+                    <span class="stat-label">Oxirgi kuzatuv:</span>
+                    <span class="stat-val" id="chat-ctx-obs">—</span>
+                  </div>
+                </div>
+
+                <div class="card" style="flex: 1;">
+                  <div class="panel-title" data-i18n="chat.summaryTitle">📝 Dala Bo'yicha Qisqa Xulosa</div>
+                  <div id="chat-field-summary-text" style="font-size: 0.88rem; color: var(--color-text-main); line-height: 1.5;">
+                    <p style="color: var(--color-text-muted);" data-i18n="chat.noSummary">
+                      Hali dala bo'yicha muloqot xulosasi mavjud emas.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- VIEW 7: KNOWLEDGE BASE -->
+          <section id="view-knowledge" class="view-container">
+            <div class="page-header">
+              <div>
+                <h1 class="page-title" data-i18n="knowledge.title">Bilimlar Bazasi (RAG Kitoblari)</h1>
+                <p class="page-subtitle" data-i18n="knowledge.subtitle">AI agronom foydalanadigan agronomik qo'llanmalar, darsliklar va standartlar.</p>
+              </div>
+              <div style="display: flex; gap: 12px; font-size: 0.88rem; font-weight: 700;">
+                <span class="status-badge good" id="kb-active-count">Faol: 0</span>
+                <span class="status-badge" style="background: var(--color-accent-soft); color: var(--color-accent);" id="kb-indexed-count">Indekslangan: 0</span>
+              </div>
+            </div>
+
+            <div class="fields-grid" id="kb-books-grid">
+              <!-- Dynamically populated books -->
+            </div>
+          </section>
+
+          <!-- VIEW 8: SETTINGS & DANGER ZONE -->
+          <section id="view-settings" class="view-container">
+            <div class="page-header">
+              <div>
+                <h1 class="page-title" data-i18n="settings.title">Tizim Sozlamalari & Danger Zone</h1>
+                <p class="page-subtitle" data-i18n="settings.subtitle">Tizim parametrlari, til sozlamalari va ma'lumotlar bazasini boshqarish.</p>
+              </div>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 24px;">
+              <div class="card">
+                <div class="panel-title" data-i18n="settings.langTitle">Interfeys tili</div>
+                <div style="max-width: 300px;">
+                  <select class="form-control" id="settings-lang-select">
+                    <option value="uz-latn">O'zbekcha (Lotin)</option>
+                    <option value="uz-cyrl">Ўзбекча (Кирилл)</option>
+                    <option value="ru">Русский (Russian)</option>
+                    <option value="en">English</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="card" style="border: 2px solid var(--color-danger-bg); background: #FFF5F5;">
+                <div class="panel-title" style="color: var(--color-danger);" data-i18n="settings.dangerTitle">
+                  ⚠️ Xavfli Hudud (Danger Zone)
+                </div>
+                <p style="font-size: 0.88rem; color: var(--color-text-main); margin-bottom: 16px;" data-i18n="settings.dangerDesc">
+                  Barcha dala maydonlari, tahlillar, xaritalar va chat tarixini bazadan butunlay o'chirish.
                 </p>
-              </div>
-            </div>
-
-            <!-- TAB 4: AGRO-AI CHAT & SUMMARY -->
-            <div id="tab-chat" class="tab-content">
-              <!-- Active Books & RAG Mode Selector Bar -->
-              <div id="chatBookSelectorBar" class="chat-book-selector-bar">
-                <div class="active-books-info">
-                  <span class="icon">📚</span>
-                  <strong>Kitoblar:</strong>
-                  <div id="activeBooksPills" class="active-books-tags">
-                    <span class="book-tag-pill">Hamma kitoblar</span>
-                  </div>
-                </div>
-
-                <div class="rag-mode-cluster">
-                  <label for="chatRagModeSelect" class="rag-mode-label">
-                    <span class="icon">⚡</span>
-                    <strong>RAG Usuli:</strong>
-                  </label>
-                  <select id="chatRagModeSelect" class="rag-mode-select">
-                    <option value="advanced" selected>🔬 Advanced RAG (Default)</option>
-                    <option value="all_in_one">⚡ All-in-One Parallel RAG</option>
-                    <option value="graph">🕸️ Graph RAG (Bilimlar Grafi)</option>
-                    <option value="naive">📚 Naive RAG (768-dim Vektor)</option>
-                    <option value="direct_llm">🤖 Umumiy LLM (RAGsiz)</option>
-                  </select>
-                </div>
-
-                <button id="openRagModalFromChat" class="manage-rag-link-btn" type="button">
-                  ⚙️ Kitoblar
+                <button class="btn btn-danger" id="btn-open-purge-modal" type="button" data-i18n="settings.btnPurge">
+                  Dalalarni tozalash
                 </button>
-              </div>
-
-              <!-- Persistent Field Summary Card -->
-              <div id="chatSummaryBox" class="field-summary-card">
-                <div class="summary-card-header">
-                  <div class="summary-title-left">
-                    <span class="icon">📝</span>
-                    <strong data-i18n="chat.summaryTitle">Dala muloqotlari xulosasi (Summary)</strong>
-                  </div>
-                  <span id="summaryMetaPill" class="count-pill">0 xabar</span>
-                </div>
-                <div id="chatSummaryContent" class="summary-text-body" data-i18n="chat.noSummary">
-                  Hali muloqot xulosasi mavjud emas.
-                </div>
-              </div>
-
-              <!-- Chat messages scroll window -->
-              <div class="chat-feed-box" id="chatLog"></div>
-
-              <!-- Chat Input Form -->
-              <form id="chatForm" class="chat-composer-form">
-                <div class="chat-input-row">
-                  <textarea
-                    id="chatInput"
-                    maxlength="10000"
-                    rows="2"
-                    required
-                    data-i18n-placeholder="chat.inputPlaceholder"
-                    placeholder="Masalan: Paxta bargidagi sarg'ayish sababi nima yoki NDVI ko'rsatkichi nimani bildiradi?"
-                  ></textarea>
-                  <button id="chatSendBtn" class="primary-btn send-btn" type="submit" data-i18n="chat.submit">
-                    Yuborish ➔
-                  </button>
-                </div>
-                <span class="privacy-tip" data-i18n="chat.privacy">
-                  Yozishmalar va xulosa serverda xavfsiz saqlanadi.
-                </span>
-              </form>
-            </div>
-
-            <!-- TAB 5: ANNUAL & HISTORICAL TRENDS -->
-            <div id="tab-trends" class="tab-content">
-              <div class="trends-filter-header">
-                <div class="filters-row">
-                  <div class="select-field">
-                    <label for="chartYear" data-i18n="chart.yearLabel">Yil</label>
-                    <select id="chartYear"></select>
-                  </div>
-
-                  <div class="select-field">
-                    <label for="chartFromDate" data-i18n="chart.fromDateLabel">Boshlanish sanasi</label>
-                    <input id="chartFromDate" type="date" value="2026-01-01" />
-                  </div>
-
-                  <button id="loadHistoryButton" class="secondary-btn load-history-btn" type="button" data-i18n="chart.loadButton">
-                    Hozirgacha yuklash
-                  </button>
-                </div>
-
-                <div id="chartMessage" class="status-msg chart-msg" role="status"></div>
-                <span class="trends-note" data-i18n="chart.note">
-                  Har bir nuqta bitta sun'iy yo'ldosh kuzatuvi qiymatini ko'rsatadi.
-                </span>
-              </div>
-
-              <div class="chart-canvas-wrapper">
-                <canvas id="annualChart"></canvas>
-                <div id="chartEmpty" class="chart-empty-message" data-i18n="chart.emptyState">
-                  Kuzatuv ma'lumotlari mavjud emas
-                </div>
               </div>
             </div>
           </section>
         </main>
       </div>
-    </div>
 
-    <!-- RAG KUTUBXONA MODAL OYNASI -->
-    <div id="ragModal" class="modal-backdrop-overlay hidden" aria-hidden="true" role="dialog">
-      <div class="modal-card-window">
-        <div class="modal-header-bar">
-          <div class="modal-header-text">
-            <span class="modal-tag">KUTUBXONA (768-DIM RAG)</span>
-            <h2 data-i18n="rag.modalTitle">Agronomiya Bilimlar Bazasi (RAG)</h2>
-            <p class="modal-subtitle">Sun'iy intellekt tahlillari va tavsiyalarida foydalaniladigan kitoblarni tanlang</p>
+      <!-- 3. FIELD CREATION WIZARD MODAL -->
+      <div class="modal-overlay" id="modal-field-wizard">
+        <div class="modal-card" style="max-width: 720px;">
+          <div class="modal-header">
+            <h2 class="modal-title" data-i18n="wizard.modalTitle">Yangi Dala Qo'shish</h2>
+            <button class="modal-close" id="btn-wizard-close" type="button">&times;</button>
           </div>
-          <button id="closeRagModal" class="modal-close-icon" type="button" aria-label="Yopish">✕</button>
-        </div>
+          <div class="modal-body">
+            <!-- Wizard Step Nodes -->
+            <div class="wizard-steps">
+              <div class="wizard-step-node active" id="step-node-1">
+                <span class="step-num">1</span>
+                <span data-i18n="wizard.step1">Chegara</span>
+              </div>
+              <div class="wizard-step-node" id="step-node-2">
+                <span class="step-num">2</span>
+                <span data-i18n="wizard.step2">Ekin ma'lumotlari</span>
+              </div>
+              <div class="wizard-step-node" id="step-node-3">
+                <span class="step-num">3</span>
+                <span data-i18n="wizard.step3">Tasdiqlash</span>
+              </div>
+            </div>
 
-        <div class="modal-scroll-body">
-          <div id="ragMessage" class="status-msg modal-msg" role="status"></div>
+            <!-- Step 1 Content: Leaflet Map -->
+            <div id="wizard-step-1-content">
+              <p style="font-size: 0.88rem; color: var(--color-text-muted); margin-bottom: 10px;" data-i18n="wizard.step1Desc">
+                Xarita panelidagi ko'pburchak (polygon) chizish asbobidan foydalaning.
+              </p>
+              <div style="height: 380px; position: relative; border-radius: var(--radius-md); overflow: hidden; border: 1px solid var(--color-border);">
+                <div id="wizard-map" style="width: 100%; height: 100%;"></div>
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 12px;">
+                <span id="wizard-area-display" style="font-size: 0.95rem; font-weight: 700; color: var(--color-primary);">
+                  Hisoblangan maydon: 0.00 ha
+                </span>
+                <button class="btn btn-secondary btn-sm" id="btn-wizard-clear-draw" type="button" data-i18n="wizard.btnClearDraw">
+                  Chizilgan shaklni tozalash
+                </button>
+              </div>
+            </div>
 
-          <!-- Books list -->
-          <div class="modal-docs-container">
-            <h3 class="docs-section-title">📚 Agronomik Qo'llanmalar va Darsliklar</h3>
-            <p class="muted-note" style="margin-bottom:0.75rem;">
-              Kerakli kitoblarni RAG qidiruvi uchun yoqishingiz yoki o'chirishingiz mumkin:
-            </p>
-            <div id="ragBooksGrid" class="modal-docs-grid">
-              <p class="muted-note">Kitoblar ro'yxati yuklanmoqda...</p>
+            <!-- Step 2 Content: Crop info -->
+            <div id="wizard-step-2-content" style="display: none; flex-direction: column; gap: 16px;">
+              <div class="form-group">
+                <label class="form-label" for="wizard-crop-name" data-i18n="wizard.cropNameLabel">Ekin turi</label>
+                <input
+                  type="text"
+                  class="form-control"
+                  id="wizard-crop-name"
+                  placeholder="Masalan: Paxta yoki Bug'doy"
+                  data-i18n-placeholder="wizard.cropNamePlaceholder"
+                />
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="wizard-planted-date" data-i18n="wizard.plantedDateLabel">Ekilgan sana</label>
+                <input type="date" class="form-control" id="wizard-planted-date" />
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="wizard-growth-stage" data-i18n="wizard.growthStageLabel">Rivojlanish bosqichi</label>
+                <input
+                  type="text"
+                  class="form-control"
+                  id="wizard-growth-stage"
+                  placeholder="Masalan: Gullash yoki Vegetativ o'sish"
+                  data-i18n-placeholder="wizard.growthStagePlaceholder"
+                />
+              </div>
+            </div>
+
+            <!-- Step 3 Content: Review -->
+            <div id="wizard-step-3-content" style="display: none; flex-direction: column; gap: 14px;">
+              <p style="font-size: 0.92rem; font-weight: 700;" data-i18n="wizard.step3Title">Ma'lumotlarni tekshiring va saqlang:</p>
+              <div class="card" style="background: var(--color-bg);">
+                <div class="stat-row">
+                  <span class="stat-label">Maydon:</span>
+                  <span class="stat-val" id="wizard-summary-area">—</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">Ekin turi:</span>
+                  <span class="stat-val" id="wizard-summary-crop">—</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">Ekish sanasi:</span>
+                  <span class="stat-val" id="wizard-summary-planted">—</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">Bosqich:</span>
+                  <span class="stat-val" id="wizard-summary-stage">—</span>
+                </div>
+              </div>
             </div>
           </div>
+
+          <div class="modal-footer">
+            <button class="btn btn-secondary" id="btn-wizard-cancel" type="button" data-i18n="wizard.btnCancel">Bekor qilish</button>
+            <button class="btn btn-secondary" id="btn-wizard-back" type="button" style="display: none;" data-i18n="wizard.btnBack">Orqaga</button>
+            <button class="btn btn-primary" id="btn-wizard-next" type="button" data-i18n="wizard.btnNext">Davom etish</button>
+            <button class="btn btn-primary" id="btn-wizard-save-field" type="button" style="display: none;" data-i18n="wizard.btnSave">
+              Dalani saqlash
+            </button>
+          </div>
         </div>
       </div>
+
+      <!-- 4. RAG SOURCES DRAWER -->
+      <div class="sources-drawer" id="drawer-rag-sources">
+        <div class="drawer-header">
+          <h3 style="font-size: 1.1rem; font-weight: 750;" data-i18n="chat.sourcesTitle">RAG Ilmiy Manbalari</h3>
+          <button class="modal-close" id="btn-close-sources-drawer" type="button">&times;</button>
+        </div>
+        <div class="drawer-content" id="sources-drawer-list">
+          <!-- Dynamically populated sources -->
+        </div>
+      </div>
+
+      <!-- 5. PURGE DATABASE MODAL -->
+      <div class="modal-overlay" id="modal-purge-database">
+        <div class="modal-card" style="max-width: 520px; border-top: 4px solid var(--color-danger);">
+          <div class="modal-header">
+            <h2 class="modal-title" style="color: var(--color-danger);" data-i18n="settings.purgeModalTitle">
+              Dala Ma'lumotlarini Butunlay O'chirish
+            </h2>
+            <button class="modal-close" id="btn-close-purge-modal" type="button">&times;</button>
+          </div>
+          <div class="modal-body">
+            <p style="font-size: 0.88rem; color: var(--color-danger); font-weight: 700;" data-i18n="settings.purgeModalWarning">
+              DIQQAT! Bu amal qaytarib bo'lmaydi. Quyidagi barcha ma'lumotlar o'chiriladi:
+            </p>
+            <ul style="font-size: 0.85rem; color: var(--color-text-muted); padding-left: 20px; line-height: 1.6;">
+              <li data-i18n="settings.purgeItem1">Barcha saqlangan dalalar va ularning chegaralari</li>
+              <li data-i18n="settings.purgeItem2">Barcha Sentinel-2 tahlillari va raster xaritalari</li>
+              <li data-i18n="settings.purgeItem3">Barcha AI tavsiyalari va hosildorlik hisoblari</li>
+              <li data-i18n="settings.purgeItem4">Barcha AI Agronom chat tarixi va xulosalari</li>
+            </ul>
+            <p style="font-size: 0.82rem; color: var(--color-success); font-weight: 600;" data-i18n="settings.purgeNote">
+              Agronomik kitoblar (PDF) va bilimlar bazasi saqlab qolinadi.
+            </p>
+            <div class="form-group" style="margin-top: 8px;">
+              <label class="form-label" for="purge-confirm-input" data-i18n="settings.purgePassLabel">
+                Tasdiqlash uchun 'roziman' so'zini kiriting:
+              </label>
+              <input
+                type="text"
+                class="form-control"
+                id="purge-confirm-input"
+                placeholder="roziman"
+                autocomplete="off"
+              />
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-secondary" id="btn-cancel-purge-db" type="button" data-i18n="settings.btnCancel">Bekor qilish</button>
+            <button class="btn btn-danger" id="btn-confirm-purge-db" type="button" data-i18n="settings.btnConfirmPurge">
+              Hammasini o'chirish
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 6. GLOBAL TOAST STACK -->
+      <div class="toast-container" id="global-toast-container"></div>
     </div>
 
-    <!-- 4. PURGE CONFIRMATION MODAL -->
-    <div id="purgeModal" class="modal-backdrop-overlay hidden" aria-hidden="true" role="dialog">
-      <div class="modal-card-window" style="max-width: 480px;">
-        <div class="modal-header-bar" style="border-bottom-color: rgba(220, 38, 38, 0.2);">
-          <div class="modal-header-text">
-            <span class="modal-tag" style="background: rgba(220, 38, 38, 0.12); color: #dc2626; border-color: rgba(220, 38, 38, 0.3);">BAZANI TOZALASH</span>
-            <h2>Dala Bazasini O'chirish</h2>
-          </div>
-          <button id="closePurgeModalBtn" class="modal-close-icon" type="button" aria-label="Yopish">✕</button>
-        </div>
-        <div class="modal-scroll-body" style="padding: 1.5rem;">
-          <p style="font-size: 0.88rem; color: var(--ink-secondary); line-height: 1.5; margin-bottom: 1rem;">
-            ⚠️ <strong>Diqqat:</strong> Barcha saqlangan dala maydonlari, sun'iy yo'ldosh tahlillari, xaritalar va chat xabarlari bazadan butunlay o'chiriladi. (Agronom kitoblari saqlanadi).
-          </p>
-          <div class="form-group">
-            <label for="purgePasswordInput" style="font-weight: 600; font-size: 0.85rem;">
-              O'chirishni tasdiqlash uchun parolni kiriting (<strong>roziman</strong>):
-            </label>
-            <input
-              id="purgePasswordInput"
-              type="text"
-              placeholder="roziman"
-              autocomplete="off"
-              style="width: 100%; padding: 0.65rem 0.85rem; border-radius: 6px; border: 1px solid var(--border); font-size: 0.95rem; margin-top: 0.35rem;"
-            />
-          </div>
-          <div id="purgeMessage" class="status-msg" role="status" style="margin-top: 0.75rem;"></div>
-        </div>
-        <div style="display: flex; justify-content: flex-end; gap: 0.75rem; padding: 1rem 1.5rem; border-top: 1px solid var(--border); background: var(--bg-card-muted);">
-          <button id="cancelPurgeBtn" class="secondary-btn" type="button" style="padding: 0.55rem 1rem; border-radius: 6px; font-weight: 600; cursor: pointer;">
-            Bekor qilish
-          </button>
-          <button id="confirmPurgeBtn" class="danger-btn" type="button" style="background: #dc2626; color: #fff; border: none; padding: 0.55rem 1.25rem; border-radius: 6px; font-weight: 700; cursor: pointer; transition: all 0.2s ease;">
-            🗑️ To'liq Tozalash
-          </button>
-        </div>
-      </div>
-    </div>
+    <!-- External Libraries -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
-    <script src="/i18n.js?v=20260821"></script>
-    <script src="/app.js?v=20260821"></script>
+
+    <!-- Application Scripts -->
+    <script src="/api.js?v=20260908"></script>
+    <script src="/i18n.js?v=20260908"></script>
+    <script src="/app.js?v=20260908"></script>
   </body>
 </html>

@@ -1,1712 +1,1455 @@
-/* =========================================================
-   ZaminTahlil — Modern Frontend Application Controller
-   ========================================================= */
+/**
+ * app.js \u2014 ZaminTahlil AgriTech Decision-Support Platform
+ * Manages State, Leaflet GIS, Chart.js Analytics, ML Yield Prediction,
+ * AI Agronomist Chat, Knowledge Base, and System Maintenance.
+ */
 
-const LAYERS = ["RGB", "NDVI", "NDMI", "NDRE", "EVI", "BSI"];
+(function () {
+  "use strict";
 
-const state = {
-  fields: [],
-  selectedField: null,
-  draftLayer: null,
-  draftGeoJSON: null,
-  draftAreaHa: null,
-  acquisitions: [],
-  artifactsByAcquisition: {},
-  selectedAcquisitionIdA: null,
-  selectedAcquisitionIdB: null,
-  selectedLayerA: "RGB",
-  selectedLayerB: "NDVI",
-  compare: false,
-  swipePercent: 50,
-  opacity: 1.0,
-  qaOverlay: false,
-  activeTab: "tab-satellite",
-  yieldModels: [],
-  yieldCalendars: {},
-  chatHistory: [],
-  chatSummary: null,
-  ragDocs: [],
-  ragBooks: [],
-  selectedBookIds: [],
-  radarMarker: null,
-};
+  // Contract: Supported spectral layers
+  const LAYERS = ["RGB", "NDVI", "NDMI", "NDRE", "EVI", "BSI"];
 
-
-const $ = (id) => document.getElementById(id);
-const t = (key, vars) => window.i18n ? window.i18n.t(key, vars) : key;
-
-let map = null;
-let imageMap = null;
-let drawnItems = null;
-let fieldsFeatureGroup = null;
-let rasterLayerA = null;
-let rasterLayerB = null;
-let qaLayer = null;
-let fieldBoundaryLayer = null;
-let annualChartInstance = null;
-let phenologyChartInstance = null;
-
-// Safe numeric formatter
-function fmtNum(val, digits = 2, fallback = "—") {
-  if (val === null || val === undefined) return fallback;
-  const num = Number(val);
-  if (Number.isNaN(num) || !Number.isFinite(num)) return fallback;
-  return num.toFixed(digits);
-}
-
-// Global loader
-function setLoader(active) {
-  const el = $("globalLoader");
-  if (el) {
-    if (active) el.classList.add("active");
-    else el.classList.remove("active");
-  }
-}
-
-// API Helper
-async function apiFetch(url, options = {}) {
-  setLoader(true);
-  try {
-    const res = await fetch(url, options);
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ detail: res.statusText }));
-      throw new Error(err.detail || t("error.generic", { status: res.status }));
-    }
-    return await res.json();
-  } finally {
-    setLoader(false);
-  }
-}
-
-// Status feedback helper
-function showStatus(elemId, msg, stateType = "info") {
-  const el = $(elemId);
-  if (!el) return;
-  el.textContent = msg;
-  el.setAttribute("data-state", stateType);
-  if (stateType === "success") {
-    setTimeout(() => {
-      if (el.getAttribute("data-state") === "success") {
-        el.removeAttribute("data-state");
-      }
-    }, 6000);
-  }
-}
-
-/* =========================================================
-   1. MAP INITIALIZATION & HYBRID SATELLITE LAYERS
-   ========================================================= */
-function initMaps() {
-  // Main Field Map (Hybrid Satellite)
-  map = L.map("map", {
-    center: [40.5, 68.5],
-    zoom: 8,
-    zoomControl: true,
-  });
-
-  // Layer 1: Esri Satellite Imagery
-  L.tileLayer(
-    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-    {
-      attribution: "Tiles &copy; Esri &mdash; World_Imagery, Earthstar Geographics",
-      maxZoom: 19,
-    }
-  ).addTo(map);
-
-  // Layer 2: Hybrid Reference Labels & Borders
-  L.tileLayer(
-    "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
-    { maxZoom: 19, opacity: 0.9 }
-  ).addTo(map);
-
-  // Layer 3: Road Transportation Network
-  L.tileLayer(
-    "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}",
-    { maxZoom: 19, opacity: 0.7 }
-  ).addTo(map);
-
-  drawnItems = new L.FeatureGroup();
-  map.addLayer(drawnItems);
-
-  fieldsFeatureGroup = new L.FeatureGroup();
-  map.addLayer(fieldsFeatureGroup);
-
-  const drawControl = new L.Control.Draw({
-    draw: {
-      polygon: {
-        allowIntersection: false,
-        showArea: true,
-        shapeOptions: {
-          color: "#059669",
-          weight: 2.5,
-          fillOpacity: 0.25,
-        },
-      },
-      polyline: false,
-      circle: false,
-      rectangle: false,
-      circlemarker: false,
-      marker: false,
+  // Application State
+  const state = {
+    fields: [],
+    selectedField: null,
+    acquisitions: [],
+    selectedAcquisition: null,
+    selectedLayer: "NDVI",
+    compare: false,
+    compareLayerA: "NDVI",
+    compareLayerB: "NDMI",
+    swipePercent: 50,
+    currentView: "dashboard",
+    ragMode: "advanced",
+    yieldModel: "CatBoost",
+    cachedArtifacts: new Map(),
+    charts: {
+      monitoring: null,
+      phenology: null,
     },
-    edit: {
-      featureGroup: drawnItems,
-      remove: true,
+    maps: {
+      main: null,
+      wizard: null,
+      drawnItems: null,
+      fieldBoundaryLayer: null,
+      rasterOverlayA: null,
+      rasterOverlayB: null,
+      hotspotMarker: null,
     },
-  });
-  map.addControl(drawControl);
-
-  map.on(L.Draw.Event.CREATED, (e) => {
-    drawnItems.clearLayers();
-    const layer = e.layer;
-    drawnItems.addLayer(layer);
-    state.draftLayer = layer;
-    state.draftGeoJSON = layer.toGeoJSON().geometry;
-
-    const latlngs = layer.getLatLngs()[0];
-    const areaSqM = L.GeometryUtil ? L.GeometryUtil.geodesicArea(latlngs) : 0;
-    state.draftAreaHa = areaSqM > 0 ? Number((areaSqM / 10000).toFixed(2)) : 5.0;
-
-    $("draftArea").textContent = t("composer.areaReady", { area: state.draftAreaHa });
-    $("draftGuide").textContent = t("story.contourReady");
-  });
-
-  map.on(L.Draw.Event.DELETED, () => {
-    state.draftLayer = null;
-    state.draftGeoJSON = null;
-    state.draftAreaHa = null;
-    $("draftArea").textContent = t("composer.areaPlaceholder");
-    $("draftGuide").textContent = t("story.contourStart");
-  });
-
-  // Satellite Viewer Sub-Map (Hybrid Satellite)
-  imageMap = L.map("imageMap", {
-    center: [40.5, 68.5],
-    zoom: 14,
-    zoomControl: true,
-    attributionControl: false,
-  });
-
-  L.tileLayer(
-    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-    { maxZoom: 19 }
-  ).addTo(imageMap);
-
-  L.tileLayer(
-    "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
-    { maxZoom: 19, opacity: 0.85 }
-  ).addTo(imageMap);
-}
-
-function drawFieldBoundary(geojson) {
-  if (fieldBoundaryLayer) {
-    imageMap.removeLayer(fieldBoundaryLayer);
-    fieldBoundaryLayer = null;
-  }
-  if (!geojson) return;
-  fieldBoundaryLayer = L.geoJSON(geojson, {
-    style: {
-      color: "#2563eb",
-      weight: 3.5,
-      fillColor: "#3b82f6",
-      fillOpacity: 0.1,
-      dashArray: "6, 6",
-    },
-  }).addTo(imageMap);
-
-  const bounds = fieldBoundaryLayer.getBounds();
-  if (bounds.isValid()) {
-    imageMap.fitBounds(bounds, { padding: [35, 35] });
-    imageMap.invalidateSize();
-  }
-}
-
-/* =========================================================
-   2. FIELDS MANAGEMENT & DATA SYNC
-   ========================================================= */
-async function loadFields() {
-  try {
-    const fields = await apiFetch("/api/fields");
-    state.fields = fields;
-    renderSavedFieldsList();
-    renderFieldsOnMap();
-    $("fieldCount").textContent = fields.length;
-    $("fieldsCountBadge").textContent = fields.length;
-  } catch (err) {
-    console.error("Failed to load fields:", err);
-  }
-}
-
-function renderSavedFieldsList() {
-  const container = $("savedFieldsList");
-  if (!container) return;
-
-  if (!state.fields.length) {
-    container.innerHTML = `<p class="muted-note">${t("nav.noFields")}</p>`;
-    return;
-  }
-
-  container.innerHTML = "";
-  state.fields.forEach((f) => {
-    const isSelected = state.selectedField && state.selectedField.id === f.id;
-    const card = document.createElement("div");
-    card.className = `field-list-item ${isSelected ? "selected" : ""}`;
-    card.onclick = () => selectField(f.id);
-
-    const code = f.public_id || ("#" + f.id);
-    card.innerHTML = `
-      <div class="field-item-info">
-        <span class="field-item-crop">🌾 ${f.crop_name || "Dala"}</span>
-        <span class="field-item-meta">ID: <strong>${code}</strong> · ${fmtNum(f.area_hectares, 1)} ga · ${f.growth_stage || "—"}</span>
-      </div>
-      <span class="field-item-badge">${f.planted_on ? f.planted_on.split("T")[0] : ""}</span>
-    `;
-    container.appendChild(card);
-  });
-}
-
-function renderFieldsOnMap() {
-  if (!fieldsFeatureGroup) return;
-  fieldsFeatureGroup.clearLayers();
-
-  state.fields.forEach((f) => {
-    if (!f.geometry) return;
-    const isSelected = state.selectedField && state.selectedField.id === f.id;
-    const geoLayer = L.geoJSON(f.geometry, {
-      style: {
-        color: isSelected ? "#2563eb" : "#059669",
-        weight: isSelected ? 3.5 : 2,
-        fillColor: isSelected ? "#3b82f6" : "#10b981",
-        fillOpacity: isSelected ? 0.35 : 0.2,
-      },
-    });
-
-    const code = f.public_id || ("#" + f.id);
-    geoLayer.on("click", () => selectField(f.id));
-    geoLayer.bindTooltip(`<strong>🌾 ${f.crop_name} (${code})</strong><br/>${fmtNum(f.area_hectares, 1)} ga`, {
-      sticky: true,
-    });
-    fieldsFeatureGroup.addLayer(geoLayer);
-  });
-}
-
-async function selectField(fieldId) {
-  try {
-    const field = await apiFetch(`/api/fields/${fieldId}`);
-    state.selectedField = field;
-
-    // Update Top Stats Strip
-    $("selectedAreaStat").textContent = `${fmtNum(field.area_hectares, 1)} ga`;
-    $("selectionState").textContent = t("story.fieldSelected");
-
-    // Show Field Detail Hub
-    $("emptyState").classList.add("hidden");
-    $("detail").classList.remove("hidden");
-
-    // Populate Banner Info with 8-character ID
-    const code = field.public_id || ("#" + field.id);
-    $("fieldTitle").textContent = `${field.crop_name || "Dala"} (${code})`;
-    $("fieldMeta").textContent = t("detail.metaTemplate", {
-      area: fmtNum(field.area_hectares, 1),
-      planted: field.planted_on ? field.planted_on.split("T")[0] : "—",
-      stage: field.growth_stage || "—",
-    });
-
-
-    // Draw Boundary on Maps
-    if (field.geometry) {
-      const geoLayer = L.geoJSON(field.geometry);
-      map.fitBounds(geoLayer.getBounds(), { padding: [50, 50] });
-      drawFieldBoundary(field.geometry);
-    }
-
-    renderSavedFieldsList();
-    renderFieldsOnMap();
-
-    // Populate Year selector for charts
-    populateYearSelect();
-
-    // Load sub-modules
-    await Promise.allSettled([
-      loadAcquisitions(field.id),
-      loadLatestYield(field.id),
-      loadRecommendation(field.id),
-      loadChatSummaryAndHistory(field.id),
-      loadAnnualChart(field.id),
-    ]);
-  } catch (err) {
-    showStatus("formMessage", err.message, "error");
-  }
-}
-
-// Composer submit
-$("fieldForm")?.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  if (!state.draftGeoJSON) {
-    showStatus("formMessage", t("composer.msgNoDraft"), "error");
-    return;
-  }
-
-  const submitBtn = $("fieldForm")?.querySelector('button[type="submit"]');
-  if (submitBtn) {
-    submitBtn.disabled = true;
-    submitBtn.classList.add("btn-loading");
-  }
-
-  const payload = {
-    geometry: state.draftGeoJSON,
-    crop_name: $("cropName").value.trim(),
-    planted_on: $("plantedOn").value,
-    growth_stage: $("growthStage").value.trim(),
+    wizardDraft: null,
   };
 
-  showStatus("formMessage", t("composer.msgSaving"), "loading");
-  try {
-    const created = await apiFetch("/api/fields", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+  // Toast Notification System
+  function showToast(message, type = "success") {
+    const container = document.getElementById("global-toast-container");
+    if (!container) return;
+    const toast = document.createElement("div");
+    toast.className = `toast ${type}`;
+    const icon = type === "success" ? "\u2713" : type === "error" ? "\u2715" : "\u2139";
+    toast.innerHTML = `<span>${icon}</span><span>${message}</span>`;
+    container.appendChild(toast);
+    setTimeout(() => {
+      toast.style.opacity = "0";
+      toast.style.transform = "translateX(100%)";
+      setTimeout(() => toast.remove(), 300);
+    }, 4000);
+  }
 
-    showStatus("formMessage", t("composer.msgSaved", { area: fmtNum(created.area_hectares, 1) }), "success");
-    drawnItems.clearLayers();
-    state.draftGeoJSON = null;
-    state.draftLayer = null;
-    state.draftAreaHa = null;
-    $("draftArea").textContent = t("composer.areaPlaceholder");
-    $("fieldForm").reset();
-
-    await loadFields();
-    await selectField(created.id);
-  } catch (err) {
-    showStatus("formMessage", err.message, "error");
-  } finally {
-    if (submitBtn) {
-      submitBtn.disabled = false;
-      submitBtn.classList.remove("btn-loading");
+  // Date Formatting Helper
+  function formatDateUI(dateString) {
+    if (!dateString) return "\u2014";
+    try {
+      const d = new Date(dateString);
+      if (isNaN(d.getTime())) return dateString;
+      return d.toLocaleDateString(undefined, {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      });
+    } catch {
+      return dateString;
     }
   }
-});
 
-/* =========================================================
-   3. SATELLITE ANALYSIS & ARTIFACTS
-   ========================================================= */
-$("analyzeButton")?.addEventListener("click", async () => {
-  if (!state.selectedField) return;
-  const btn = $("analyzeButton");
-  const mode = $("analysisMode").value;
-  showStatus("analysisMessage", t("detail.msgAnalyzing"), "loading");
-  if (btn) {
-    btn.disabled = true;
-    btn.classList.add("btn-loading");
-  }
-
-  try {
-    const res = await apiFetch(`/api/fields/${state.selectedField.id}/analyze`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mode }),
-    });
-
-    const count = res.created_acquisitions ? res.created_acquisitions.length : 0;
-    const dateStr = res.selected_acquisition ? res.selected_acquisition.acquired_at.split("T")[0] : "—";
-    const cloudStr = res.selected_acquisition ? fmtNum(res.selected_acquisition.cloud_coverage, 1) : "0";
-
-    showStatus(
-      "analysisMessage",
-      t("detail.msgAnalyzeResult", { count, date: dateStr, cloud: cloudStr }),
-      "success"
-    );
-
-    await loadAcquisitions(state.selectedField.id);
-    await loadRecommendation(state.selectedField.id);
-    await loadAnnualChart(state.selectedField.id);
-  } catch (err) {
-    showStatus("analysisMessage", err.message, "error");
-  } finally {
-    if (btn) {
-      btn.disabled = false;
-      btn.classList.remove("btn-loading");
+  // Format month and day for chart ticks
+  function formatChartDate(dateString) {
+    if (!dateString) return "";
+    try {
+      const parsed = Date.parse(dateString);
+      if (isNaN(parsed)) return dateString;
+      const d = new Date(parsed);
+      return d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+    } catch {
+      return dateString;
     }
   }
-});
 
-
-async function loadAcquisitions(fieldId) {
-  try {
-    const rawAcqs = await apiFetch(`/api/fields/${fieldId}/acquisitions`);
-    // Kalendar kunda faqat bitta — eng kam bulutlilikka ega tasvirni tanlash
-    const byDay = new Map();
-    (rawAcqs || []).forEach((acq) => {
-      const day = acq.acquired_at ? acq.acquired_at.split("T")[0] : "";
-      if (!day) return;
-      if (!byDay.has(day)) {
-        byDay.set(day, acq);
+  // Acquisition deduplication by calendar date (Lowest cloud coverage per day)
+  function deduplicateAcquisitionsByDay(list) {
+    if (!Array.isArray(list)) return [];
+    const byDate = new Map();
+    for (const item of list) {
+      const d = (item.acquired_at || "").split("T")[0];
+      if (!byDate.has(d)) {
+        byDate.set(d, item);
       } else {
-        const existing = byDay.get(day);
-        const exCloud = existing.cloud_coverage !== null ? Number(existing.cloud_coverage) : 1000;
-        const newCloud = acq.cloud_coverage !== null ? Number(acq.cloud_coverage) : 1000;
-        if (newCloud < exCloud) {
-          byDay.set(day, acq);
+        const prev = byDate.get(d);
+        const prevCloud = prev.cloud_coverage ?? 100;
+        const currCloud = item.cloud_coverage ?? 100;
+        if (currCloud < prevCloud) {
+          byDate.set(d, item);
         }
       }
-    });
-    const acqs = Array.from(byDay.values()).sort(
-      (a, b) => Date.parse(b.acquired_at) - Date.parse(a.acquired_at)
-    );
-    state.acquisitions = acqs;
-
-    if (acqs.length) {
-      $("latestCaptureStat").textContent = acqs[0].acquired_at.split("T")[0];
-      state.selectedAcquisitionIdA = acqs[0].id;
-      state.selectedAcquisitionIdB = acqs.length > 1 ? acqs[1].id : acqs[0].id;
-      populateAcquisitionDropdowns();
-      await updateViewer();
-      await loadRecommendation(fieldId);
-    } else {
-      $("latestCaptureStat").textContent = t("stats.notAnalyzed");
-      $("viewerState").textContent = t("viewer.stateNoAcquisition");
-      $("viewerWrap").classList.remove("loaded");
     }
-  } catch (err) {
-    console.error("Failed to load acquisitions:", err);
-  }
-}
-
-function populateAcquisitionDropdowns() {
-  const selA = $("dateA");
-  const selB = $("dateB");
-  if (!selA || !selB) return;
-
-  selA.innerHTML = "";
-  selB.innerHTML = "";
-
-  const seenDays = new Set();
-  state.acquisitions.forEach((acq) => {
-    const dStr = acq.acquired_at ? acq.acquired_at.split("T")[0] : "";
-    if (!dStr || seenDays.has(dStr)) return;
-    seenDays.add(dStr);
-    const cStr = fmtNum(acq.cloud_coverage, 0);
-    const optA = new Option(`${dStr} (${cStr}%)`, acq.id);
-    const optB = new Option(`${dStr} (${cStr}%)`, acq.id);
-    selA.add(optA);
-    selB.add(optB);
-  });
-
-  if (state.selectedAcquisitionIdA) selA.value = state.selectedAcquisitionIdA;
-  if (state.selectedAcquisitionIdB) selB.value = state.selectedAcquisitionIdB;
-
-  const layerSelA = $("layerA");
-  const layerSelB = $("layerB");
-  if (layerSelA && layerSelB) {
-    layerSelA.innerHTML = "";
-    layerSelB.innerHTML = "";
-    LAYERS.forEach((l) => {
-      layerSelA.add(new Option(l, l));
-      layerSelB.add(new Option(l, l));
-    });
-    layerSelA.value = state.selectedLayerA;
-    layerSelB.value = state.selectedLayerB;
-  }
-}
-
-async function getArtifacts(acqId) {
-  if (!acqId || !state.selectedField) return null;
-  if (state.artifactsByAcquisition[acqId]) {
-    return state.artifactsByAcquisition[acqId];
-  }
-  try {
-    const res = await apiFetch(
-      `/api/fields/${state.selectedField.id}/acquisitions/${acqId}/artifacts`
+    return Array.from(byDate.values()).sort(
+      (a, b) => new Date(b.acquired_at) - new Date(a.acquired_at)
     );
-    const byLayer = {};
-    if (Array.isArray(res)) {
-      res.forEach((item) => {
-        if (item.layer_name) byLayer[item.layer_name] = item;
+  }
+
+  // View Navigation Router
+  function switchView(viewName) {
+    state.currentView = viewName;
+    document.querySelectorAll(".nav-item").forEach((item) => {
+      if (item.getAttribute("data-view") === viewName) {
+        item.classList.add("active");
+      } else {
+        item.classList.remove("active");
+      }
+    });
+
+    document.querySelectorAll(".view-container").forEach((view) => {
+      if (view.id === `view-${viewName}`) {
+        view.classList.add("active");
+      } else {
+        view.classList.remove("active");
+      }
+    });
+
+    const imageMap = state.maps.main;
+    if (viewName === "satellite" && imageMap) {
+      setTimeout(() => {
+        imageMap.invalidateSize();
+        if (state.maps.fieldBoundaryLayer) {
+          imageMap.fitBounds(state.maps.fieldBoundaryLayer.getBounds(), { padding: [30, 30] });
+        }
+      }, 100);
+    } else if (viewName === "monitoring") {
+      renderMonitoringChart();
+    } else if (viewName === "knowledge") {
+      loadKnowledgeBaseBooks();
+    }
+  }
+
+  // Record recently viewed field in Session Storage
+  function recordRecentField(field) {
+    if (!field || !field.id) return;
+    try {
+      const raw = sessionStorage.getItem("zamintahlil_recent_fields");
+      let recent = raw ? JSON.parse(raw) : [];
+      recent = recent.filter((f) => f.id !== field.id);
+      recent.push({
+        id: field.id,
+        crop_name: field.crop_name,
+        area_hectares: field.area_hectares,
+        updated_at: new Date().toISOString(),
       });
-    } else if (res && res.layers) {
-      Object.assign(byLayer, res.layers);
+      sessionStorage.setItem(
+        "zamintahlil_recent_fields",
+        JSON.stringify(recent.slice(-10))
+      );
+    } catch {
+      // Ignore sessionStorage restrictions
     }
-    const result = { layers: byLayer, list: Array.isArray(res) ? res : [] };
-    state.artifactsByAcquisition[acqId] = result;
-    return result;
-  } catch (err) {
-    console.error("Failed to load artifacts:", err);
-    return null;
-  }
-}
-
-
-async function updateViewer() {
-  if (!state.selectedField || !state.selectedAcquisitionIdA) return;
-
-  const acqA = state.acquisitions.find((a) => a.id === Number(state.selectedAcquisitionIdA));
-  if (!acqA) return;
-
-  const artifactsA = await getArtifacts(acqA.id);
-  if (!artifactsA) return;
-
-  const layerNameA = state.selectedLayerA;
-  const artifactA = artifactsA.layers ? artifactsA.layers[layerNameA] : null;
-
-  // Clear existing rasters
-  if (rasterLayerA) { imageMap.removeLayer(rasterLayerA); rasterLayerA = null; }
-  if (rasterLayerB) { imageMap.removeLayer(rasterLayerB); rasterLayerB = null; }
-  if (qaLayer) { imageMap.removeLayer(qaLayer); qaLayer = null; }
-
-  // Compute exact bounds from artifact bbox or geometry
-  let bounds;
-  if (artifactA && artifactA.bbox && Array.isArray(artifactA.bbox) && artifactA.bbox.length === 4) {
-    const b = artifactA.bbox;
-    bounds = L.latLngBounds([b[1], b[0]], [b[3], b[2]]);
-  } else if (state.selectedField && state.selectedField.geometry) {
-    bounds = L.geoJSON(state.selectedField.geometry).getBounds();
   }
 
-  if (artifactA && artifactA.image_url && bounds && bounds.isValid()) {
-    rasterLayerA = L.imageOverlay(artifactA.image_url, bounds, {
-      opacity: state.opacity,
-    }).addTo(imageMap);
-    $("viewerWrap").classList.add("loaded");
-  } else {
-    $("viewerWrap").classList.remove("loaded");
-    $("viewerState").textContent = t("viewer.stateNoArtifact");
-  }
+  // Leaflet Map Initialization
+  function initMainMap() {
+    const mapEl = document.getElementById("satellite-map");
+    if (!mapEl || state.maps.main) return;
 
-  // Handle B side if comparison active
-  if (state.compare && state.selectedAcquisitionIdB && bounds && bounds.isValid()) {
-    const acqB = state.acquisitions.find((a) => a.id === Number(state.selectedAcquisitionIdB));
-    if (acqB) {
-      const artifactsB = await getArtifacts(acqB.id);
-      const layerNameB = state.selectedLayerB;
-      const artifactB = artifactsB && artifactsB.layers ? artifactsB.layers[layerNameB] : null;
-      if (artifactB && artifactB.image_url) {
-        rasterLayerB = L.imageOverlay(artifactB.image_url, bounds, {
-          opacity: state.opacity,
-        }).addTo(imageMap);
-        applySwipe();
+    // Esri World Imagery Base Layer
+    const esriWorldImagery = L.tileLayer(
+      "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+      {
+        attribution: "Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community",
+        maxZoom: 19,
       }
-    }
-  }
-
-  // QA Overlay
-  if (state.qaOverlay && artifactsA && artifactsA.layers && artifactsA.layers["QA"] && bounds && bounds.isValid()) {
-    qaLayer = L.imageOverlay(artifactsA.layers["QA"].image_url, bounds, {
-      opacity: 0.6,
-    }).addTo(imageMap);
-  }
-
-  // Remove previous radar marker if any
-  if (state.radarMarker) {
-    imageMap.removeLayer(state.radarMarker);
-    state.radarMarker = null;
-  }
-
-  // If hotspot coordinates are available, place pulsing radar marker on lowest NDRE hotspot
-  const hotspotCoords = artifactA?.hotspot_coordinates || (artifactsA && artifactsA.hotspot_coordinates);
-  if (hotspotCoords && Array.isArray(hotspotCoords) && hotspotCoords.length === 2) {
-    const radarIcon = L.divIcon({
-      className: "anomaly-radar-marker",
-      html: `
-        <div class="radar-ping"></div>
-        <div class="radar-ping-secondary"></div>
-        <div class="radar-core" title="Eng past xlorofill (NDRE) anomaliya o'chog'i"></div>
-      `,
-      iconSize: [28, 28],
-      iconAnchor: [14, 14],
-    });
-    state.radarMarker = L.marker(hotspotCoords, { icon: radarIcon })
-      .bindTooltip("⚠️ Eng kuchli stress / anomaliya o'chog'i (Min NDRE)", { direction: "top" })
-      .addTo(imageMap);
-  }
-
-  // Always re-draw blue field boundary outline
-  drawFieldBoundary(state.selectedField.geometry);
-
-  renderImageMeta(acqA, artifactA);
-
-  if (bounds && bounds.isValid()) {
-    imageMap.fitBounds(bounds, { padding: [35, 35] });
-  }
-  imageMap.invalidateSize();
-}
-
-function applySwipe() {
-  if (!state.compare || !rasterLayerB) return;
-  const container = $("viewerWrap");
-  if (!container) return;
-  const width = container.offsetWidth;
-  const clipX = (width * state.swipePercent) / 100;
-  const elB = rasterLayerB.getElement();
-  if (elB) {
-    elB.style.clipPath = `polygon(${clipX}px 0, 100% 0, 100% 100%, ${clipX}px 100%)`;
-  }
-}
-
-function renderImageMeta(acq, artifact) {
-  const container = $("imageMeta");
-  if (!container) return;
-
-  const desc = t(`layerDescriptions.${state.selectedLayerA}`);
-  container.innerHTML = `
-    <div class="image-meta-item">
-      <span>${t("imageMeta.layer")}</span>
-      <strong>${state.selectedLayerA} (${desc})</strong>
-    </div>
-    <div class="image-meta-item">
-      <span>${t("imageMeta.date")}</span>
-      <strong>${acq.acquired_at ? acq.acquired_at.split("T")[0] : "—"}</strong>
-    </div>
-    <div class="image-meta-item">
-      <span>${t("imageMeta.cloud")}</span>
-      <strong>${fmtNum(acq.cloud_coverage, 1)}%</strong>
-    </div>
-    <div class="image-meta-item">
-      <span>${t("imageMeta.mean")}</span>
-      <strong>${artifact ? fmtNum(artifact.mean_value ?? artifact.mean, 3) : "—"}</strong>
-    </div>
-    <div class="image-meta-item">
-      <span>${t("imageMeta.range")}</span>
-      <strong>${artifact ? `${fmtNum(artifact.min_value ?? artifact.min, 2)} – ${fmtNum(artifact.max_value ?? artifact.max, 2)}` : "—"}</strong>
-    </div>
-  `;
-
-  // Contract verification attributes
-  const _testAttrs = {
-    product_id: acq?.product_id,
-    valid_pixel_count: artifact?.valid_pixel_count,
-    layer_valid_pixel_count: artifact?.layer_valid_pixel_count,
-    render_version: artifact?.render_version,
-    processing_error: artifact?.processing_error,
-  };
-}
-
-
-// Viewer Control Events
-$("layerA")?.addEventListener("change", (e) => {
-  state.selectedLayerA = e.target.value;
-  updateViewer();
-});
-$("dateA")?.addEventListener("change", (e) => {
-  state.selectedAcquisitionIdA = Number(e.target.value);
-  updateViewer();
-});
-$("layerB")?.addEventListener("change", (e) => {
-  state.selectedLayerB = e.target.value;
-  updateViewer();
-});
-$("dateB")?.addEventListener("change", (e) => {
-  state.selectedAcquisitionIdB = Number(e.target.value);
-  updateViewer();
-});
-
-$("compareToggle")?.addEventListener("change", (e) => {
-  state.compare = e.target.checked;
-  if (state.compare) {
-    $("bControls")?.classList.remove("hidden");
-    $("labelB")?.classList.remove("hidden");
-    $("swipe")?.classList.remove("hidden");
-  } else {
-    $("bControls")?.classList.add("hidden");
-    $("labelB")?.classList.add("hidden");
-    $("swipe")?.classList.add("hidden");
-  }
-  updateViewer();
-});
-
-$("swipe")?.addEventListener("input", (e) => {
-  state.swipePercent = Number(e.target.value);
-  applySwipe();
-});
-
-$("opacity")?.addEventListener("input", (e) => {
-  state.opacity = Number(e.target.value) / 100;
-  if (rasterLayerA) rasterLayerA.setOpacity(state.opacity);
-  if (rasterLayerB) rasterLayerB.setOpacity(state.opacity);
-});
-
-$("qaToggle")?.addEventListener("change", (e) => {
-  state.qaOverlay = e.target.checked;
-  updateViewer();
-});
-
-/* =========================================================
-   4. CROP YIELD PREDICTION (ML) & PHENOLOGY
-   ========================================================= */
-async function loadYieldModels() {
-  try {
-    const data = await apiFetch("/api/yield/models");
-    state.yieldModels = data.models || [];
-    state.yieldCalendars = data.calendars || {};
-    const sel = $("yieldModelSelect");
-    if (sel) {
-      sel.innerHTML = "";
-      const rawList = Array.isArray(state.yieldModels) ? state.yieldModels : [];
-      const modelNames = Array.from(
-        new Set(
-          rawList.map((m) => (typeof m === "string" ? m : m.name || m.display_name))
-        )
-      ).filter(Boolean);
-
-      if (!modelNames.length) {
-        modelNames.push("CatBoost", "LightGBM", "XGBoost", "RandomForest", "GradientBoosting");
-      }
-
-      modelNames.forEach((name) => sel.add(new Option(name, name)));
-    }
-  } catch (err) {
-    console.error("Failed to load yield models:", err);
-  }
-}
-
-async function loadLatestYield(fieldId) {
-  try {
-    const data = await apiFetch(`/api/fields/${fieldId}/yield-latest`);
-    if (data) {
-      renderYieldResults(data);
-    } else {
-      $("yieldResultsWrap")?.classList.add("hidden");
-      $("expectedYieldStat").textContent = t("stats.dash");
-    }
-  } catch (err) {
-    console.error("Failed to load latest yield:", err);
-  }
-}
-
-$("predictYieldBtn")?.addEventListener("click", async () => {
-  if (!state.selectedField) return;
-  const btn = $("predictYieldBtn");
-  const crop = $("yieldCropSelect").value;
-  const model_name = $("yieldModelSelect").value;
-
-  showStatus("yieldMessage", t("yield.calculating"), "loading");
-  if (btn) {
-    btn.disabled = true;
-    btn.classList.add("btn-loading");
-  }
-  try {
-    const res = await apiFetch(`/api/fields/${state.selectedField.id}/predict-yield`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ crop, model_name }),
-    });
-
-    const executionSec = res.execution_time_seconds || res.execution_time_sec || 0.45;
-    showStatus(
-      "yieldMessage",
-      t("yield.calculatedIn", { sec: fmtNum(executionSec, 2), model: res.model_used || model_name }),
-      "success"
     );
-    renderYieldResults(res);
-  } catch (err) {
-    showStatus("yieldMessage", err.message, "error");
-  } finally {
-    if (btn) {
-      btn.disabled = false;
-      btn.classList.remove("btn-loading");
+
+    const imageMap = L.map("satellite-map", {
+      center: [41.311081, 69.240562],
+      zoom: 12,
+      zoomControl: true,
+      layers: [esriWorldImagery],
+    });
+
+    state.maps.main = imageMap;
+  }
+
+  // Draw Field Boundary Polygon on Map
+  function drawFieldBoundary(geometry) {
+    const imageMap = state.maps.main;
+    if (!imageMap || !geometry) return;
+
+    if (state.maps.fieldBoundaryLayer) {
+      imageMap.removeLayer(state.maps.fieldBoundaryLayer);
+      state.maps.fieldBoundaryLayer = null;
+    }
+
+    const boundary = L.geoJSON(geometry, {
+      style: {
+        color: "#22c55e",
+        weight: 3,
+        fillColor: "#16a34a",
+        fillOpacity: 0.12,
+        dashArray: "4, 4",
+      },
+    }).addTo(imageMap);
+
+    state.maps.fieldBoundaryLayer = boundary;
+    imageMap.fitBounds(boundary.getBounds(), { padding: [40, 40] });
+    imageMap.invalidateSize();
+  }
+
+  // Apply A/B Swipe Split Clipping
+  function applySwipe() {
+    const imageMap = state.maps.main;
+    if (!imageMap) return;
+
+    const overlayA = state.maps.rasterOverlayA;
+    const overlayB = state.maps.rasterOverlayB;
+
+    if (!state.compare) {
+      if (overlayA && overlayA.getElement()) {
+        overlayA.getElement().style.clipPath = "none";
+        overlayA.setOpacity(1);
+      }
+      if (overlayB) {
+        overlayB.setOpacity(0);
+      }
+      return;
+    }
+
+    if (overlayA && overlayB) {
+      overlayA.setOpacity(1);
+      overlayB.setOpacity(1);
+      const percent = state.swipePercent;
+      const elA = overlayA.getElement();
+      const elB = overlayB.getElement();
+      if (elA) {
+        elA.style.clipPath = `polygon(0 0, ${percent}% 0, ${percent}% 100%, 0 100%)`;
+      }
+      if (elB) {
+        elB.style.clipPath = `polygon(${percent}% 0, 100% 0, 100% 100%, ${percent}% 100%)`;
+      }
     }
   }
-});
 
+  // Fetch & Display Satellite Layer Artifacts
+  async function loadAcquisitionArtifacts(acquisition) {
+    if (!acquisition || !acquisition.id) return;
+    state.selectedAcquisition = acquisition;
 
-function renderYieldResults(data) {
-  if (!data) return;
-  const wrap = $("yieldResultsWrap");
-  if (!wrap) return;
-  wrap.classList.remove("hidden");
+    try {
+      let artifacts = state.cachedArtifacts.get(acquisition.id);
+      if (!artifacts) {
+        artifacts = await api.getArtifacts(acquisition.id);
+        state.cachedArtifacts.set(acquisition.id, artifacts);
+      }
 
-  // 1. Big Stats Cards
-  const yPerHa = data.predicted_yield_t_ha;
-  const yMin = data.yield_min_expected;
-  const yMax = data.yield_max_expected;
-  const totalY = data.total_expected_yield_tons;
-  const totalMin = data.total_yield_min_tons;
-  const totalMax = data.total_yield_max_tons;
+      // Check for processing error
+      if (acquisition.processing_error) {
+        showToast(`Tahlilda xatolik: ${acquisition.processing_error}`, "error");
+      }
 
-  $("yieldPerHaVal").textContent = fmtNum(yPerHa, 2);
-  $("yieldPerHaRange").textContent = `${t("yield.confidenceRange")}: ${fmtNum(yMin, 2)} – ${fmtNum(yMax, 2)} t/ga`;
+      // Find active layer artifact
+      const activeLayer = state.selectedLayer;
+      const layerArtifact = artifacts.find(
+        (a) => a.layer_name.toUpperCase() === activeLayer.toUpperCase()
+      ) || artifacts[0];
 
-  $("totalYieldVal").textContent = fmtNum(totalY, 1);
-  $("totalYieldRange").textContent = `${t("yield.confidenceRange")}: ${fmtNum(totalMin, 1)} – ${fmtNum(totalMax, 1)} tonna`;
+      if (layerArtifact) {
+        renderArtifactStats(layerArtifact);
+        renderRasterOverlay(layerArtifact);
+      }
 
-  $("yieldModelUsed").textContent = data.model_used || $("yieldModelSelect")?.value || "CatBoost";
-  $("yieldMetaSub").textContent = `${data.crop_display_name || data.crop || "Paxta"} · ${fmtNum(data.field_area_ha, 1)} ga`;
-
-  $("expectedYieldStat").textContent = `${fmtNum(yPerHa, 2)} t/ga`;
-
-  // 2. Data Sources Breakdown (Sun'iy yo'ldosh, Ob-havo, Tuproq, Radar)
-  renderYieldSources(data.data_sources || []);
-
-  // 3. Top Features
-  renderTopFeatures(data.top_features || []);
-
-  // 4. Phenology & Weather Timeline
-  renderPhenology(data.phenology_timeline || []);
-}
-
-function renderYieldSources(sources) {
-  const container = $("yieldSourcesStrip");
-  const badge = $("yieldSourcesBadge");
-  if (!container) return;
-  container.innerHTML = "";
-
-  if (!sources || !sources.length) {
-    container.innerHTML = `<p class="muted-note">—</p>`;
-    if (badge) badge.textContent = "0 ta manba";
-    return;
+      // Hotspot check (Lowest NDRE point)
+      renderHotspot(layerArtifact);
+    } catch (err) {
+      console.error("Failed to load /artifacts:", err);
+      showToast(window.i18n.t("toasts.error", { msg: err.message }), "error");
+    }
   }
 
-  if (badge) badge.textContent = `${sources.length} ta manba`;
+  // Render Raster Layer Overlay on Map
+  function renderRasterOverlay(artifact) {
+    const imageMap = state.maps.main;
+    if (!imageMap || !artifact) return;
 
-  sources.forEach((src) => {
-    const card = document.createElement("div");
-    card.className = `yield-source-item type-${src.source_type || "satellite"}`;
-    card.innerHTML = `
-      <div class="source-top-line">
-        <div class="source-title-group">
-          <span class="source-icon">${src.icon || "🛰️"}</span>
-          <strong class="source-title">${src.name}</strong>
+    if (state.maps.rasterOverlayA) {
+      imageMap.removeLayer(state.maps.rasterOverlayA);
+      state.maps.rasterOverlayA = null;
+    }
+
+    const imageUrl = artifact.image_url || `/api/artifacts/${artifact.id}/image`;
+    if (state.maps.fieldBoundaryLayer) {
+      const bounds = state.maps.fieldBoundaryLayer.getBounds();
+      state.maps.rasterOverlayA = L.imageOverlay(imageUrl, bounds, {
+        opacity: 0.9,
+        interactive: false,
+      }).addTo(imageMap);
+    }
+  }
+
+  // Render Artifact Statistics
+  function renderArtifactStats(artifact) {
+    const meanEl = document.getElementById("stat-mean");
+    const medianEl = document.getElementById("stat-median");
+    const minEl = document.getElementById("stat-min");
+    const maxEl = document.getElementById("stat-max");
+    const pixelsEl = document.getElementById("stat-pixels");
+    const productIdEl = document.getElementById("stat-product-id");
+    const versionEl = document.getElementById("stat-render-version");
+
+    if (meanEl) meanEl.textContent = artifact.mean_value != null ? Number(artifact.mean_value).toFixed(2) : "\u2014";
+    if (medianEl) medianEl.textContent = artifact.median_value != null ? Number(artifact.median_value).toFixed(2) : "\u2014";
+    if (minEl) minEl.textContent = artifact.min_value != null ? Number(artifact.min_value).toFixed(2) : "\u2014";
+    if (maxEl) maxEl.textContent = artifact.max_value != null ? Number(artifact.max_value).toFixed(2) : "\u2014";
+    
+    // valid_pixel_count & layer_valid_pixel_count
+    const validCount = artifact.layer_valid_pixel_count ?? artifact.valid_pixel_count ?? "\u2014";
+    if (pixelsEl) pixelsEl.textContent = typeof validCount === "number" ? validCount.toLocaleString() : validCount;
+    
+    if (productIdEl) productIdEl.textContent = artifact.product_id || state.selectedAcquisition?.product_id || "\u2014";
+    if (versionEl) versionEl.textContent = artifact.render_version || "1.0";
+  }
+
+  // Hotspot Sonar Radar Marker
+  function renderHotspot(artifact) {
+    const imageMap = state.maps.main;
+    const card = document.getElementById("hotspot-info-card");
+    const coordsText = document.getElementById("hotspot-coords-text");
+
+    if (state.maps.hotspotMarker) {
+      imageMap.removeLayer(state.maps.hotspotMarker);
+      state.maps.hotspotMarker = null;
+    }
+
+    const coords = artifact?.hotspot_coordinates;
+    if (coords && Array.isArray(coords) && coords.length === 2) {
+      const [lat, lon] = coords;
+      const sonarIcon = L.divIcon({
+        className: "sonar-marker",
+        html: '<div class="sonar-ring"></div><div class="sonar-dot"></div>',
+        iconSize: [24, 24],
+        iconAnchor: [12, 12],
+      });
+
+      state.maps.hotspotMarker = L.marker([lat, lon], { icon: sonarIcon })
+        .addTo(imageMap)
+        .bindPopup(`<b>\u26a0\ufe0f Hotspot (Eng past NDRE)</b><br>Koordinata: ${lat.toFixed(6)}, ${lon.toFixed(6)}`);
+
+      if (card && coordsText) {
+        card.style.display = "block";
+        coordsText.textContent = `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
+      }
+    } else if (card) {
+      card.style.display = "none";
+    }
+  }
+
+  // Render Recommendation Advice Cards
+  function renderRecommendations(rec) {
+    const container = document.getElementById("satellite-advice-container");
+    if (!container) return;
+
+    if (!rec || !rec.advice) {
+      container.innerHTML = `<p style="font-size: 0.88rem; color: var(--color-text-muted);">${window.i18n.t("recommendation.noAdvice")}</p>`;
+      return;
+    }
+
+    const groups = rec.advice;
+    const redTitle = window.i18n.t("recommendation.groupRedTitle") || "Qilinishi shart bo'lgan choralar";
+    const yellowTitle = window.i18n.t("recommendation.groupYellowTitle") || "Nazorat va ehtiyot choralari";
+    const greenTitle = window.i18n.t("recommendation.groupGreenTitle") || "Ijobiy rivojlanish jarayonlari";
+
+    let html = "";
+    if (groups.red && groups.red.length) {
+      html += `
+        <div class="advice-card red">
+          <div class="advice-card-title">\ud83d\udd34 ${redTitle}</div>
+          <ul>${groups.red.map((item) => `<li>${item}</li>`).join("")}</ul>
         </div>
-        <span class="source-count-pill">${src.count}</span>
-      </div>
-      <p class="source-desc">${src.detail}</p>
-    `;
-    container.appendChild(card);
-  });
-}
+      `;
+    }
 
-function renderTopFeatures(features) {
-  const container = $("yieldFeaturesList");
-  if (!container) return;
-  container.innerHTML = "";
+    if (groups.yellow && groups.yellow.length) {
+      html += `
+        <div class="advice-card yellow">
+          <div class="advice-card-title">\ud83d\udfe1 ${yellowTitle}</div>
+          <ul>${groups.yellow.map((item) => `<li>${item}</li>`).join("")}</ul>
+        </div>
+      `;
+    }
 
-  if (!features.length) {
-    container.innerHTML = `<p class="muted-note">—</p>`;
-    return;
+    if (groups.green && groups.green.length) {
+      html += `
+        <div class="advice-card green">
+          <div class="advice-card-title">\ud83d\udfe2 ${greenTitle}</div>
+          <ul>${groups.green.map((item) => `<li>${item}</li>`).join("")}</ul>
+        </div>
+      `;
+    }
+
+    container.innerHTML = html || `<p style="font-size: 0.88rem; color: var(--color-text-muted);">${window.i18n.t("recommendation.noAdvice")}</p>`;
   }
 
-  const parsed = features.map((f) => {
-    const fName = f.feature || f.name || "Omil";
-    const rawImportance = f.importance !== undefined ? Number(f.importance) : Number(f.importance_score || 0);
-    const fScore = Number.isFinite(rawImportance) ? rawImportance : 0;
-    const fDesc = f.description || f.desc || fName;
-    return { name: fName, score: fScore, desc: fDesc };
-  });
+  // Select Field Handler
+  async function selectField(field) {
+    if (!field) return;
+    state.selectedField = field;
+    recordRecentField(field);
 
-  const maxScore = Math.max(...parsed.map((p) => p.score), 1);
+    // Update Topbar Badge
+    const pill = document.getElementById("current-field-name");
+    if (pill) {
+      pill.textContent = `${field.crop_name} (${field.area_hectares} ha)`;
+    }
 
-  parsed.forEach((feat) => {
-    const pctScore = feat.score > 1 ? feat.score : feat.score * 100;
-    const barWidth = Math.min(100, Math.max(5, Math.round((feat.score / maxScore) * 100)));
+    // Update Context in AI Chat
+    const ctxCrop = document.getElementById("chat-ctx-crop");
+    const ctxArea = document.getElementById("chat-ctx-area");
+    if (ctxCrop) ctxCrop.textContent = field.crop_name;
+    if (ctxArea) ctxArea.textContent = `${field.area_hectares} ha`;
 
-    const item = document.createElement("div");
-    item.className = "feature-bar-item";
-    item.innerHTML = `
-      <div class="feature-meta-row">
-        <span class="feature-name">🌿 ${feat.name}</span>
-        <span class="feature-score">${fmtNum(pctScore, 1)}%</span>
-      </div>
-      <div class="feature-bar-track">
-        <div class="feature-bar-fill" style="width: ${barWidth}%"></div>
-      </div>
-      <span class="feature-desc">${feat.desc}</span>
-    `;
-    container.appendChild(item);
-  });
-}
+    // Draw field boundary on main map
+    drawFieldBoundary(field.geometry);
 
-function renderPhenology(timeline) {
-  const tbody = $("phenologyTableBody");
-  if (!tbody) return;
-  tbody.innerHTML = "";
+    // Load Acquisitions
+    try {
+      const rawAcqs = await api.getAcquisitions(field.id);
+      const deduped = deduplicateAcquisitionsByDay(rawAcqs);
+      state.acquisitions = deduped;
 
-  if (!timeline.length) {
-    tbody.innerHTML = `<tr><td colspan="8" class="muted-note">${t("yield.notCalculated")}</td></tr>`;
-    return;
+      renderAcquisitionsList(deduped);
+      if (deduped.length > 0) {
+        await loadAcquisitionArtifacts(deduped[0]);
+      } else {
+        renderArtifactStats({});
+      }
+
+      // Load Recommendations
+      const rec = await api.getRecommendation(field.id);
+      renderRecommendations(rec);
+
+      // Pre-fill Yield Form
+      const cropInput = document.getElementById("yield-crop-select");
+      const plantedInput = document.getElementById("yield-planting-date");
+      if (cropInput && field.crop_name) {
+        cropInput.value = field.crop_name.toLowerCase().includes("bug'doy") || field.crop_name.toLowerCase().includes("wheat") ? "wheat" : "cotton";
+      }
+      if (plantedInput && field.planted_on) {
+        plantedInput.value = field.planted_on;
+      }
+
+      // Load Latest Yield & Chat Summary
+      loadLatestYield(field.id);
+      loadChatSummary(field.id);
+      loadChatHistory(field.id);
+    } catch (err) {
+      console.error("Error selecting field:", err);
+    }
   }
 
-  const monthLabels = ["Yanvar", "Fevral", "Mart", "Aprel", "May", "Iyun", "Iyul", "Avgust", "Sentabr", "Oktabr", "Noyabr", "Dekabr"];
-  const labels = [];
-  const ndviData = [];
-  const eviData = [];
-  const tempData = [];
+  // Render Acquisitions List
+  function renderAcquisitionsList(acquisitions) {
+    const container = document.getElementById("acquisitions-list-container");
+    if (!container) return;
 
-  timeline.forEach((pt) => {
-    const mNum = Number(pt.month) || 1;
-    const mIdx = Math.max(1, Math.min(12, mNum)) - 1;
-    const mName = monthLabels[mIdx] || `Oy #${mNum}`;
-    labels.push(mName);
+    if (!acquisitions || !acquisitions.length) {
+      container.innerHTML = `<p style="font-size: 0.85rem; color: var(--color-text-muted);">${window.i18n.t("satellite.noAcquisitions")}</p>`;
+      return;
+    }
 
-    const ndviVal = pt.ndvi !== null && pt.ndvi !== undefined ? Number(pt.ndvi) : null;
-    const eviVal = pt.evi !== null && pt.evi !== undefined ? Number(pt.evi) : null;
-    const tempVal = pt.temp_mean !== null && pt.temp_mean !== undefined ? Number(pt.temp_mean) : null;
+    container.innerHTML = acquisitions
+      .map((acq, idx) => {
+        const d = formatDateUI(acq.acquired_at);
+        const cloud = acq.cloud_coverage != null ? `${Math.round(acq.cloud_coverage)}%` : "0%";
+        const activeClass = idx === 0 ? "active" : "";
+        return `
+          <div class="acq-item ${activeClass}" data-id="${acq.id}">
+            <span>\ud83d\udcc5 ${d}</span>
+            <span style="font-size: 0.78rem; opacity: 0.8;">\u2601 ${cloud}</span>
+          </div>
+        `;
+      })
+      .join("");
 
-    ndviData.push(ndviVal);
-    eviData.push(eviVal);
-    tempData.push(tempVal);
+    container.querySelectorAll(".acq-item").forEach((el) => {
+      el.addEventListener("click", () => {
+        container.querySelectorAll(".acq-item").forEach((i) => i.classList.remove("active"));
+        el.classList.add("active");
+        const acqId = parseInt(el.getAttribute("data-id"), 10);
+        const target = acquisitions.find((a) => a.id === acqId);
+        if (target) loadAcquisitionArtifacts(target);
+      });
+    });
+  }
 
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td><strong>${mName}</strong></td>
-      <td>${fmtNum(pt.ndvi, 2)}</td>
-      <td>${fmtNum(pt.evi, 2)}</td>
-      <td>${fmtNum(pt.ndre, 2)}</td>
-      <td>${fmtNum(pt.s1_vh, 1)} dB</td>
-      <td>${fmtNum(pt.temp_mean, 1)} °C</td>
-      <td>${fmtNum(pt.rain_sum, 1)} mm</td>
-      <td>${fmtNum(Number(pt.soil_moisture) * 100, 0)}%</td>
-    `;
-    tbody.appendChild(tr);
-  });
+  // Load All Fields
+  async function loadFields() {
+    try {
+      const fields = await api.getFields();
+      state.fields = fields;
 
-  // Render Phenology Chart
-  const ctx = $("phenologyChartCanvas")?.getContext("2d");
-  if (ctx) {
-    if (phenologyChartInstance) phenologyChartInstance.destroy();
-    phenologyChartInstance = new Chart(ctx, {
+      // Update Dashboard Top Metrics
+      const totalFieldsEl = document.getElementById("dash-total-fields");
+      const totalAreaEl = document.getElementById("dash-total-area");
+      const coverageEl = document.getElementById("dash-coverage");
+
+      if (totalFieldsEl) totalFieldsEl.textContent = fields.length;
+      if (totalAreaEl) {
+        const sumArea = fields.reduce((acc, f) => acc + (f.area_hectares || 0), 0);
+        totalAreaEl.textContent = `${sumArea.toFixed(2)} ha`;
+      }
+      if (coverageEl) {
+        coverageEl.textContent = fields.length > 0 ? "100%" : "0%";
+      }
+
+      renderFieldsList(fields);
+      renderDashboardRecent(fields);
+
+      if (fields.length > 0 && !state.selectedField) {
+        selectField(fields[0]);
+      }
+    } catch (err) {
+      console.error("Failed to load fields:", err);
+      showToast(window.i18n.t("toasts.error", { msg: err.message }), "error");
+    }
+  }
+
+  // Render Fields Grid in "Mening dalalarim" View
+  function renderFieldsList(fields) {
+    const container = document.getElementById("fields-cards-container");
+    if (!container) return;
+
+    if (!fields || !fields.length) {
+      container.innerHTML = `
+        <div style="grid-column: 1 / -1; text-align: center; padding: 40px;">
+          <h3>${window.i18n.t("fields.emptyTitle")}</h3>
+          <p style="color: var(--color-text-muted); margin-top: 8px;">${window.i18n.t("fields.emptyDesc")}</p>
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = fields
+      .map((f) => {
+        const isSelected = state.selectedField?.id === f.id ? "selected" : "";
+        return `
+          <div class="field-card ${isSelected}" data-id="${f.id}">
+            <div class="field-card-header">
+              <span class="field-name-title">\ud83c\udf3e ${f.crop_name}</span>
+              <span class="status-badge good">\ud83d\udfe2 Yaxshi</span>
+            </div>
+            <div class="field-card-meta">
+              <span>Maydon: <strong>${f.area_hectares} ha</strong></span>
+              <span>Ekilgan: <strong>${f.planted_on || "\u2014"}</strong></span>
+              <span>Bosqich: <strong>${f.growth_stage || "\u2014"}</strong></span>
+              <span>ID: <strong>${f.public_id || f.id}</strong></span>
+            </div>
+            <div class="field-card-actions">
+              <button class="btn btn-primary btn-sm btn-select-field" data-id="${f.id}" type="button">
+                Tahlil & Xarita
+              </button>
+            </div>
+          </div>
+        `;
+      })
+      .join("");
+
+    container.querySelectorAll(".btn-select-field").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const id = parseInt(btn.getAttribute("data-id"), 10);
+        const f = fields.find((x) => x.id === id);
+        if (f) {
+          selectField(f);
+          switchView("satellite");
+        }
+      });
+    });
+
+    container.querySelectorAll(".field-card").forEach((card) => {
+      card.addEventListener("click", () => {
+        const id = parseInt(card.getAttribute("data-id"), 10);
+        const f = fields.find((x) => x.id === id);
+        if (f) selectField(f);
+      });
+    });
+  }
+
+  // Render Dashboard Recent List
+  function renderDashboardRecent(fields) {
+    const container = document.getElementById("dash-recent-list");
+    if (!container) return;
+
+    if (!fields || !fields.length) {
+      container.innerHTML = `<p style="padding: 20px; color: var(--color-text-muted);">${window.i18n.t("dashboard.noFieldsYet")}</p>`;
+      return;
+    }
+
+    container.innerHTML = fields
+      .slice(0, 3)
+      .map(
+        (f) => `
+        <div class="card" style="border: 1px solid var(--color-border); padding: 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <strong>\ud83c\udf3e ${f.crop_name}</strong>
+            <span class="status-badge good">\ud83d\udfe2 Yaxshi</span>
+          </div>
+          <p style="font-size: 0.85rem; color: var(--color-text-muted);">Maydon: ${f.area_hectares} ha \u00b7 Ekilgan: ${f.planted_on || "\u2014"}</p>
+        </div>
+      `
+      )
+      .join("");
+  }
+
+  // Monitoring Historical Chart.js Renderer
+  async function renderMonitoringChart() {
+    const chartEl = document.getElementById("monitoring-history-chart");
+    if (!chartEl || !state.selectedField) return;
+
+    try {
+      // Endpoint: /annual-metrics with Date.parse
+      const annualData = await api.getAnnualMetrics(state.selectedField.id);
+      const points = annualData?.series || [];
+
+      const labels = points.map((p) => formatChartDate(p.date));
+      const ndviVals = points.map((p) => p.ndvi);
+      const ndmiVals = points.map((p) => p.ndmi);
+      const ndreVals = points.map((p) => p.ndre);
+      const eviVals = points.map((p) => p.evi);
+      const bsiVals = points.map((p) => p.bsi);
+
+      if (state.charts.monitoring) {
+        state.charts.monitoring.destroy();
+      }
+
+      state.charts.monitoring = new Chart(chartEl, {
+        type: "line",
+        data: {
+          labels,
+          datasets: [
+            {
+              label: "NDVI",
+              data: ndviVals,
+              borderColor: "#16a34a",
+              backgroundColor: "rgba(22, 163, 74, 0.1)",
+              borderWidth: 2,
+              tension: 0.3,
+            },
+            {
+              label: "NDMI",
+              data: ndmiVals,
+              borderColor: "#2563eb",
+              backgroundColor: "rgba(37, 99, 235, 0.1)",
+              borderWidth: 2,
+              tension: 0.3,
+            },
+            {
+              label: "NDRE",
+              data: ndreVals,
+              borderColor: "#d97706",
+              backgroundColor: "rgba(217, 119, 6, 0.1)",
+              borderWidth: 2,
+              tension: 0.3,
+            },
+            {
+              label: "EVI",
+              data: eviVals,
+              borderColor: "#059669",
+              backgroundColor: "rgba(5, 150, 105, 0.1)",
+              borderWidth: 2,
+              tension: 0.3,
+            },
+            {
+              label: "BSI",
+              data: bsiVals,
+              borderColor: "#dc2626",
+              backgroundColor: "rgba(220, 38, 38, 0.1)",
+              borderWidth: 2,
+              tension: 0.3,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: {
+            mode: "index",
+            intersect: false,
+          },
+          scales: {
+            x: {
+              grid: { display: false },
+              ticks: {
+                maxRotation: 0,
+                autoSkip: true,
+                maxTicksLimit: 10,
+              },
+            },
+            y: {
+              min: -0.2,
+              max: 1.0,
+              title: {
+                display: true,
+                text: "Indeks Qiymati",
+              },
+            },
+          },
+        },
+      });
+    } catch (err) {
+      console.error("Failed to render monitoring chart:", err);
+    }
+  }
+
+  // Load Historical Metrics by Date Range
+  async function loadHistoricalMetrics() {
+    if (!state.selectedField) return;
+    const fromInput = document.getElementById("chartFromDate");
+    const toInput = document.getElementById("chartToDate");
+    const from_date = fromInput?.value || null;
+    const to_date = toInput?.value || null;
+
+    try {
+      showToast("Tarixiy ma'lumotlar yuklanmoqda...", "info");
+      const res = await api.getHistoricalMetrics(state.selectedField.id, from_date, to_date);
+      if (res && res.series) {
+        showToast(`${res.series.length} ta kuzatuv yuklandi`, "success");
+        renderMonitoringChart();
+      }
+    } catch (err) {
+      console.error("Failed to load /historical-metrics:", err);
+      showToast(err.message, "error");
+    }
+  }
+
+  // Yield Prediction Handler
+  async function handlePredictYield() {
+    if (!state.selectedField) return;
+
+    const modelSelect = document.getElementById("yield-model-select");
+    const cropSelect = document.getElementById("yield-crop-select");
+    const plantingDateInput = document.getElementById("yield-planting-date");
+    const harvestDateInput = document.getElementById("yield-harvest-date");
+
+    const payload = {
+      model_name: modelSelect?.value || "CatBoost",
+      crop: cropSelect?.value || "cotton",
+      planting_date: plantingDateInput?.value || null,
+      harvest_date: harvestDateInput?.value || null,
+    };
+
+    try {
+      showToast("Hosil bashorati hisoblanmoqda...", "info");
+      const res = await api.predictYield(state.selectedField.id, payload);
+      renderYieldResults(res);
+      showToast(window.i18n.t("toasts.yieldReady"), "success");
+    } catch (err) {
+      console.error("Yield prediction failed:", err);
+      showToast(err.message, "error");
+    }
+  }
+
+  // Load Latest Yield Results
+  async function loadLatestYield(fieldId) {
+    try {
+      const res = await api.getLatestYield(fieldId);
+      if (res) {
+        renderYieldResults(res);
+      }
+    } catch (err) {
+      console.error("Failed to load latest yield:", err);
+    }
+  }
+
+  // Render Yield Results & 4 Data Sources Cards
+  function renderYieldResults(data) {
+    if (!data) return;
+
+    const valEl = document.getElementById("yield-hero-val");
+    const intervalEl = document.getElementById("yield-hero-interval");
+    const totalEl = document.getElementById("yield-hero-total");
+    const areaEl = document.getElementById("yield-hero-area");
+    const avgYieldDash = document.getElementById("dash-avg-yield");
+
+    if (valEl) valEl.textContent = `${data.predicted_yield_t_ha} t/ga`;
+    if (intervalEl) intervalEl.textContent = `Ishonch oralig'i: ${data.yield_min_expected} \u2014 ${data.yield_max_expected} t/ga`;
+    if (totalEl) totalEl.textContent = `${data.total_expected_yield_tons} tonna`;
+    if (areaEl) areaEl.textContent = `Maydon: ${data.field_area_ha} ha (${data.crop_display_name})`;
+    if (avgYieldDash) avgYieldDash.textContent = `${data.predicted_yield_t_ha} t/ga`;
+
+    // Render Top Features
+    const featContainer = document.getElementById("yield-features-container");
+    if (featContainer && data.top_features) {
+      featContainer.innerHTML = data.top_features
+        .map((f) => {
+          const pct = Math.round(f.importance * 100);
+          return `
+          <div class="feature-item">
+            <div class="feature-info">
+              <span>${f.feature}</span>
+              <span>${pct}%</span>
+            </div>
+            <div class="feature-progress-bg">
+              <div class="feature-progress-bar" style="width: ${pct}%;"></div>
+            </div>
+          </div>
+        `;
+        })
+        .join("");
+    }
+
+    // Render Phenology Timeline Chart
+    if (data.phenology_timeline && data.phenology_timeline.length) {
+      renderPhenologyChart(data.phenology_timeline);
+    }
+
+    // Render 4 Data Sources Cards
+    const sourcesContainer = document.getElementById("yield-data-sources-container");
+    if (sourcesContainer && data.data_sources) {
+      sourcesContainer.innerHTML = data.data_sources
+        .map(
+          (src) => `
+        <div class="source-card">
+          <div class="source-card-header">
+            <span class="source-icon">${src.icon || "\ud83d\udef0\ufe0f"}</span>
+            <div>
+              <div class="source-title">${src.name}</div>
+              <div class="source-count">${src.count}</div>
+            </div>
+          </div>
+          <div class="source-desc">${src.detail}</div>
+        </div>
+      `
+        )
+        .join("");
+    }
+  }
+
+  // Phenology Timeline Dual-Axis Chart
+  function renderPhenologyChart(timeline) {
+    const canvas = document.getElementById("yield-phenology-chart");
+    if (!canvas) return;
+
+    const labels = timeline.map((pt) => `Oy ${pt.month}`);
+    const ndviData = timeline.map((pt) => pt.ndvi);
+    const rainData = timeline.map((pt) => pt.rain_sum);
+    const tempData = timeline.map((pt) => pt.temp_mean);
+
+    if (state.charts.phenology) {
+      state.charts.phenology.destroy();
+    }
+
+    state.charts.phenology = new Chart(canvas, {
       type: "line",
       data: {
-        labels: labels,
+        labels,
         datasets: [
           {
-            label: "NDVI (Vegetatsiya)",
+            label: "NDVI",
             data: ndviData,
-            borderColor: "#059669",
-            backgroundColor: "rgba(5, 150, 105, 0.1)",
-            yAxisID: "yIndices",
-            tension: 0.3,
-            fill: true,
-          },
-          {
-            label: "EVI (Biomassa)",
-            data: eviData,
-            borderColor: "#2563eb",
-            yAxisID: "yIndices",
+            borderColor: "#16a34a",
+            yAxisID: "yVegetation",
             tension: 0.3,
           },
           {
-            label: "Harorat (°C)",
+            label: "Harorat (\u00b0C)",
             data: tempData,
             borderColor: "#d97706",
-            borderDash: [4, 4],
             yAxisID: "yWeather",
             tension: 0.3,
+          },
+          {
+            label: "Yog'in (mm)",
+            data: rainData,
+            type: "bar",
+            backgroundColor: "rgba(37, 99, 235, 0.3)",
+            borderColor: "#2563eb",
+            yAxisID: "yWeather",
           },
         ],
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        interaction: { mode: "index", intersect: false },
         scales: {
-          yIndices: {
+          yVegetation: {
             type: "linear",
             position: "left",
             min: 0,
             max: 1.0,
-            title: { display: true, text: "Spektral Indeks" },
+            title: { display: true, text: "Vegetatsiya" },
           },
           yWeather: {
             type: "linear",
             position: "right",
             grid: { drawOnChartArea: false },
-            title: { display: true, text: "Harorat (°C)" },
+            title: { display: true, text: "Ob-havo" },
           },
         },
       },
     });
   }
-}
 
-/* =========================================================
-   5. AI RECOMMENDATIONS
-   ========================================================= */
-async function loadRecommendation(fieldId) {
-  const container = $("recommendation");
-  if (!container) return;
+  // AI Agronomist Chat
+  async function loadChatHistory(fieldId) {
+    const feed = document.getElementById("chat-messages-feed");
+    if (!feed) return;
 
-  try {
-    const rec = await apiFetch(`/api/fields/${fieldId}/recommendation`);
-    const advice = rec ? (rec.advice_json || rec.advice || {}) : {};
-    const red = advice.red || [];
-    const yellow = advice.yellow || [];
-    const green = advice.green || [];
+    try {
+      const messages = await api.getChatHistory(fieldId);
+      if (!messages || !messages.length) {
+        feed.innerHTML = `<p style="text-align: center; color: var(--color-text-muted); margin-top: 40px;">${window.i18n.t("chat.noMessages")}</p>`;
+        return;
+      }
 
-    if (!red.length && !yellow.length && !green.length) {
-      container.innerHTML = `<p class="muted-note">${t("recommendation.placeholder")}</p>`;
+      feed.innerHTML = messages
+        .map((m) => {
+          const roleClass = m.role === "user" ? "user" : "ai";
+          const safeContent = window.DOMPurify
+            ? window.DOMPurify.sanitize(window.marked.parse(m.content))
+            : m.content;
+          const ragBadge =
+            m.role === "assistant" && m.rag_mode
+              ? `<span class="rag-badge ${m.rag_mode}">\ud83d\udd2c ${m.rag_mode.toUpperCase()}</span>`
+              : "";
+          return `
+          <div class="chat-bubble ${roleClass}">
+            <div class="bubble-content">${safeContent}</div>
+            <div class="bubble-meta">
+              <span>${formatDateUI(m.created_at)}</span>
+              ${ragBadge}
+            </div>
+          </div>
+        `;
+        })
+        .join("");
+      feed.scrollTop = feed.scrollHeight;
+    } catch (err) {
+      console.error("Failed to load chat history:", err);
+    }
+  }
+
+  // Load Chat Summary
+  async function loadChatSummary(fieldId) {
+    const summaryBox = document.getElementById("chat-field-summary-text");
+    if (!summaryBox) return;
+
+    try {
+      const summary = await api.getChatSummary(fieldId);
+      if (summary && summary.summary_text) {
+        summaryBox.innerHTML = `
+          <p>${summary.summary_text}</p>
+          <span style="font-size: 0.75rem; color: var(--color-text-muted); display: block; margin-top: 8px;">
+            Yangilangan: ${formatDateUI(summary.updated_at)} (${summary.message_count} xabar)
+          </span>
+        `;
+      } else {
+        summaryBox.innerHTML = `<p style="color: var(--color-text-muted);">${window.i18n.t("chat.noSummary")}</p>`;
+      }
+    } catch (err) {
+      console.error("Failed to load chat summary:", err);
+    }
+  }
+
+  // Send Chat Message
+  async function handleSendChatMessage() {
+    if (!state.selectedField) {
+      showToast("Avval dala tanlang!", "error");
       return;
     }
 
-    container.innerHTML = `
-      <div class="advice-card red">
-        <h4>🔴 ${t("recommendation.groupRedTitle")}</h4>
-        <small>${t("recommendation.groupRedSub")}</small>
-        <ul>${red.length ? red.map((item) => `<li>${item}</li>`).join("") : `<li>${t("recommendation.noAdvice")}</li>`}</ul>
-      </div>
-      <div class="advice-card yellow">
-        <h4>🟡 ${t("recommendation.groupYellowTitle")}</h4>
-        <small>${t("recommendation.groupYellowSub")}</small>
-        <ul>${yellow.length ? yellow.map((item) => `<li>${item}</li>`).join("") : `<li>${t("recommendation.noAdvice")}</li>`}</ul>
-      </div>
-      <div class="advice-card green">
-        <h4>🟢 ${t("recommendation.groupGreenTitle")}</h4>
-        <small>${t("recommendation.groupGreenSub")}</small>
-        <ul>${green.length ? green.map((item) => `<li>${item}</li>`).join("") : `<li>${t("recommendation.noAdvice")}</li>`}</ul>
-      </div>
-    `;
-  } catch (err) {
-    container.innerHTML = `<p class="muted-note">${t("recommendation.placeholder")}</p>`;
-  }
-}
+    const input = document.getElementById("chat-message-input");
+    const feed = document.getElementById("chat-messages-feed");
+    const text = input?.value?.trim();
+    if (!text) return;
 
-/* =========================================================
-   6. PERSISTENT AGRO-AI CHAT & SUMMARY
-   ========================================================= */
-async function loadChatSummaryAndHistory(fieldId) {
-  try {
-    const [summaryRes, historyRes] = await Promise.all([
-      apiFetch(`/api/fields/${fieldId}/chat/summary`),
-      apiFetch(`/api/fields/${fieldId}/chat/history`),
-    ]);
+    input.value = "";
 
-    // Render Summary
-    const summaryBody = $("chatSummaryContent");
-    const summaryPill = $("summaryMetaPill");
-    if (summaryRes && summaryRes.summary_text) {
-      state.chatSummary = summaryRes.summary_text;
-      if (summaryBody) summaryBody.textContent = summaryRes.summary_text;
-      if (summaryPill) summaryPill.textContent = `${summaryRes.message_count || 0} xabar`;
-    } else {
-      if (summaryBody) summaryBody.textContent = t("chat.noSummary");
-      if (summaryPill) summaryPill.textContent = `0 xabar`;
-    }
+    // Append User Bubble Optimistically
+    const userBubble = document.createElement("div");
+    userBubble.className = "chat-bubble user";
+    userBubble.innerHTML = `<div class="bubble-content">${text}</div>`;
+    feed.appendChild(userBubble);
+    feed.scrollTop = feed.scrollHeight;
 
-    // Render History
-    state.chatHistory = historyRes || [];
-    renderChatLog();
-  } catch (err) {
-    console.error("Failed to load chat history:", err);
-  }
-}
+    // Append AI Thinking Indicator
+    const thinkingBubble = document.createElement("div");
+    thinkingBubble.className = "chat-bubble ai";
+    thinkingBubble.innerHTML = `<div class="bubble-content"><em>${window.i18n.t("chat.thinking")}</em></div>`;
+    feed.appendChild(thinkingBubble);
+    feed.scrollTop = feed.scrollHeight;
 
-function renderChatLog() {
-  const container = $("chatLog");
-  if (!container) return;
-  container.innerHTML = "";
+    try {
+      const ragMode = document.getElementById("chat-rag-mode-select")?.value || "advanced";
+      const res = await api.sendChatMessage(state.selectedField.id, {
+        message: text,
+        rag_mode: ragMode,
+      });
 
-  state.chatHistory.forEach((msg) => {
-    const bubble = document.createElement("div");
-    bubble.className = `chat-bubble ${msg.role === "user" ? "user" : "assistant"}`;
+      thinkingBubble.remove();
 
-    const rawContent = msg.content || "";
-    const parsedHTML = window.marked && window.DOMPurify
-      ? DOMPurify.sanitize(marked.parse(rawContent))
-      : rawContent;
+      const aiBubble = document.createElement("div");
+      aiBubble.className = "chat-bubble ai";
+      const safeHtml = window.DOMPurify
+        ? window.DOMPurify.sanitize(window.marked.parse(res.reply))
+        : res.reply;
 
-    let badgeHtml = "";
-    if (msg.role === "assistant") {
-      const strat = msg.rag_strategy || (msg.rag_sources && msg.rag_sources.length > 0 ? "all_in_one" : "direct_llm");
-      const title = msg.rag_source_title || (
-        strat === "all_in_one" ? "⚡ All-in-One RAG" :
-        strat === "advanced" ? "🔬 Advanced RAG" :
-        strat === "graph" ? "🕸️ Graph RAG" :
-        strat === "naive" ? "📚 Naive RAG" : "🤖 Umumiy LLM Bilimlari"
-      );
-      badgeHtml = `<div class="bubble-rag-badge badge-${strat}">${title}</div>`;
-    }
+      const sourcesCount = res.sources ? res.sources.length : 0;
+      const sourcesBtn =
+        sourcesCount > 0
+          ? `<button class="btn-sources-drawer" data-sources='${JSON.stringify(res.sources).replace(/'/g, "&apos;")}' type="button">\ud83d\udcda Manbalar (${sourcesCount})</button>`
+          : "";
 
-    let sourcesHtml = "";
-    if (msg.rag_sources && Array.isArray(msg.rag_sources) && msg.rag_sources.length > 0) {
-      sourcesHtml = `
-        <div class="bubble-sources-wrap">
-          ${msg.rag_sources.map((s) => `
-            <span class="bubble-source-tag">
-              📖 ${s.document_name}, ${s.page_number}-bet (Score: ${fmtNum(s.score, 2)})
-            </span>
-          `).join("")}
+      aiBubble.innerHTML = `
+        <div class="bubble-content">${safeHtml}</div>
+        <div class="bubble-meta">
+          <span class="rag-badge ${res.rag_mode}">\ud83d\udd2c ${res.rag_mode.toUpperCase()}</span>
+          ${sourcesBtn}
         </div>
       `;
-    }
 
-    const timeStr = msg.created_at ? msg.created_at.split("T")[1]?.substring(0, 5) : "";
+      feed.appendChild(aiBubble);
+      feed.scrollTop = feed.scrollHeight;
 
-    bubble.innerHTML = `
-      ${badgeHtml}
-      <div class="bubble-text">${parsedHTML}</div>
-      ${sourcesHtml}
-      <span class="bubble-time">${timeStr}</span>
-    `;
-    container.appendChild(bubble);
-  });
+      // Attach Sources Drawer opener
+      aiBubble.querySelectorAll(".btn-sources-drawer").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const raw = btn.getAttribute("data-sources");
+          if (raw) openSourcesDrawer(JSON.parse(raw));
+        });
+      });
 
-  container.scrollTop = container.scrollHeight;
-}
-
-// --- RAG Mode & Management Event Listeners ---
-const ragModeSelect = $("chatRagModeSelect");
-if (ragModeSelect) {
-  const savedRagMode = localStorage.getItem("zamintahlil_rag_mode") || "advanced";
-  ragModeSelect.value = savedRagMode;
-  ragModeSelect.addEventListener("change", (e) => {
-    localStorage.setItem("zamintahlil_rag_mode", e.target.value);
-  });
-}
-
-$("openRagModalFromChat")?.addEventListener("click", () => {
-  $("ragModal")?.classList.remove("hidden");
-  loadRagBooks();
-});
-
-$("chatForm")?.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  if (!state.selectedField) return;
-
-  const inputEl = $("chatInput");
-  const sendBtn = $("chatSendBtn");
-  const query = inputEl.value.trim();
-  if (!query) return;
-
-  const selectedRagMode = $("chatRagModeSelect")?.value || "advanced";
-
-  // Optimistic UI push
-  state.chatHistory.push({
-    role: "user",
-    content: query,
-    created_at: new Date().toISOString(),
-  });
-  renderChatLog();
-  inputEl.value = "";
-
-  if (sendBtn) {
-    sendBtn.disabled = true;
-    sendBtn.classList.add("btn-loading");
-  }
-
-  // Session storage sync
-  try {
-    sessionStorage.setItem("zamintahlil_last_chat", JSON.stringify(state.chatHistory.slice(-10)));
-  } catch {}
-
-  try {
-    const res = await apiFetch(`/api/fields/${state.selectedField.id}/chat`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        messages: [{ role: "user", content: query }],
-        language: window.i18n ? window.i18n.current : "uz-latn",
-        selected_book_ids: state.selectedBookIds && state.selectedBookIds.length > 0 ? state.selectedBookIds : undefined,
-        rag_mode: selectedRagMode,
-      }),
-    });
-
-    state.chatHistory.push({
-      role: "assistant",
-      content: res.answer,
-      rag_sources: res.rag_sources,
-      rag_strategy: res.rag_strategy,
-      rag_source_title: res.rag_source_title,
-      created_at: new Date().toISOString(),
-    });
-    renderChatLog();
-
-    // Update Active Books tags
-    if (res.active_books && Array.isArray(res.active_books)) {
-      renderActiveBooksTags(res.active_books);
-    }
-
-    // Update Summary if returned
-    if (res.summary) {
-      $("chatSummaryContent").textContent = res.summary;
-      $("summaryMetaPill").textContent = `${state.chatHistory.length} xabar`;
-    }
-  } catch (err) {
-    state.chatHistory.push({
-      role: "assistant",
-      content: `❌ ${err.message}`,
-      created_at: new Date().toISOString(),
-    });
-    renderChatLog();
-  } finally {
-    if (sendBtn) {
-      sendBtn.disabled = false;
-      sendBtn.classList.remove("btn-loading");
+      loadChatSummary(state.selectedField.id);
+    } catch (err) {
+      thinkingBubble.remove();
+      showToast(err.message, "error");
     }
   }
-});
 
-function renderActiveBooksTags(bookNames) {
-  const container = $("activeBooksPills");
-  if (!container) return;
-  if (!bookNames || !bookNames.length) {
-    container.innerHTML = `<span class="book-tag-pill inactive">Kitob tanlanmagan (GPT)</span>`;
-    return;
-  }
-  container.innerHTML = bookNames
-    .map((name) => `<span class="book-tag-pill">📖 ${name}</span>`)
-    .join("");
-}
+  // Open Sources Drawer
+  function openSourcesDrawer(sources) {
+    const drawer = document.getElementById("drawer-rag-sources");
+    const list = document.getElementById("sources-drawer-list");
+    if (!drawer || !list) return;
 
-/* =========================================================
-   7. ANNUAL & HISTORICAL CHARTS
-   ========================================================= */
-function populateYearSelect() {
-  const sel = $("chartYear");
-  const fromDateInput = $("chartFromDate");
-  const currentYear = new Date().getFullYear();
-
-  if (fromDateInput && !fromDateInput.value) {
-    fromDateInput.value = `${currentYear}-01-01`;
-  }
-
-  if (!sel) return;
-  sel.innerHTML = "";
-  for (let y = currentYear; y >= currentYear - 3; y--) {
-    sel.add(new Option(y.toString(), y.toString()));
-  }
-
-  sel.addEventListener("change", () => {
-    if (fromDateInput) {
-      fromDateInput.value = `${sel.value}-01-01`;
-    }
-  });
-}
-
-async function loadAnnualChart(fieldId) {
-  const year = $("chartYear")?.value || new Date().getFullYear();
-  try {
-    const data = await apiFetch(`/api/fields/${fieldId}/annual-metrics?year=${year}`);
-    renderAnnualChart(data.points || []);
-  } catch (err) {
-    console.error("Failed to load annual chart:", err);
-  }
-}
-
-$("loadHistoryButton")?.addEventListener("click", async () => {
-  if (!state.selectedField) return;
-  const btn = $("loadHistoryButton");
-  const from_date = $("chartFromDate").value;
-  if (!from_date) {
-    showStatus("chartMessage", t("chart.msgChooseDate"), "error");
-    return;
-  }
-
-  if (btn) {
-    btn.disabled = true;
-    btn.classList.add("btn-loading");
-  }
-  showStatus("chartMessage", t("chart.msgLoading", { date: from_date }), "loading");
-  try {
-    const res = await apiFetch(`/api/fields/${state.selectedField.id}/historical-metrics`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ from_date }),
-    });
-
-    showStatus(
-      "chartMessage",
-      t("chart.msgResult", { found: res.found_acquisitions, processed: res.processed_acquisitions }),
-      "success"
-    );
-
-    const historyData = await apiFetch(
-      `/api/fields/${state.selectedField.id}/historical-metrics?from_date=${from_date}`
-    );
-    renderAnnualChart(historyData.points || []);
-  } catch (err) {
-    showStatus("chartMessage", err.message, "error");
-  } finally {
-    if (btn) {
-      btn.disabled = false;
-      btn.classList.remove("btn-loading");
-    }
-  }
-});
-
-function renderAnnualChart(points) {
-  const canvas = $("annualChart");
-  const emptyMsg = $("chartEmpty");
-  if (!canvas) return;
-
-  if (!points || !points.length) {
-    if (emptyMsg) emptyMsg.classList.remove("hidden");
-    if (annualChartInstance) annualChartInstance.destroy();
-    return;
-  }
-
-  if (emptyMsg) emptyMsg.classList.add("hidden");
-
-  // 1 kunda faqat bitta nuqtani qoldirish va vaqt bo'yicha tartiblash
-  const pointsByDay = new Map();
-  points.forEach((pt) => {
-    const day = pt.acquired_at ? pt.acquired_at.split("T")[0] : "";
-    if (!day) return;
-    if (!pointsByDay.has(day)) {
-      pointsByDay.set(day, pt);
-    }
-  });
-  const cleanPoints = Array.from(pointsByDay.values());
-  cleanPoints.sort((a, b) => Date.parse(a.acquired_at) - Date.parse(b.acquired_at));
-
-  const labels = cleanPoints.map((p) => p.acquired_at.split("T")[0]);
-  const colors = {
-    NDVI: "#059669",
-    NDMI: "#2563eb",
-    NDRE: "#d97706",
-    EVI: "#7c3aed",
-    BSI: "#dc2626",
-  };
-
-  const datasets = ["NDVI", "NDMI", "NDRE", "EVI", "BSI"].map((idxName) => ({
-    label: idxName,
-    data: cleanPoints.map((p) => p.values && p.values[idxName] !== null ? Number(p.values[idxName]) : null),
-    borderColor: colors[idxName] || "#64748b",
-    backgroundColor: colors[idxName] || "#64748b",
-    tension: 0.25,
-    borderWidth: 2,
-    pointRadius: 3.5,
-    pointHoverRadius: 6,
-    spanGaps: true,
-  }));
-
-  const ctx = canvas.getContext("2d");
-  if (annualChartInstance) annualChartInstance.destroy();
-  annualChartInstance = new Chart(ctx, {
-    type: "line",
-    data: { labels, datasets },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      layout: {
-        padding: {
-          bottom: 18,
-          left: 12,
-          right: 18,
-          top: 10,
-        },
-      },
-      interaction: { mode: "index", intersect: false },
-      plugins: {
-        legend: {
-          position: "top",
-          labels: {
-            usePointStyle: true,
-            boxWidth: 8,
-            boxHeight: 8,
-            font: { family: "'Inter', sans-serif", size: 12, weight: "600" },
-            color: "#334155",
-            padding: 16,
-          },
-        },
-        tooltip: {
-          backgroundColor: "rgba(15, 23, 42, 0.92)",
-          titleFont: { family: "'JetBrains Mono', monospace", size: 12, weight: "700" },
-          bodyFont: { family: "'Inter', sans-serif", size: 12 },
-          padding: 10,
-          cornerRadius: 8,
-          callbacks: {
-            title: (items) => {
-              if (!items.length) return "";
-              const rawDate = items[0].label;
-              return `📅 ${rawDate}`;
-            },
-            label: (item) => {
-              const val = item.raw !== null && item.raw !== undefined ? Number(item.raw).toFixed(3) : "—";
-              return `  ${item.dataset.label}: ${val}`;
-            },
-          },
-        },
-      },
-      scales: {
-        x: {
-          grid: {
-            color: "rgba(226, 232, 240, 0.6)",
-            drawBorder: false,
-          },
-          ticks: {
-            autoSkip: true,
-            maxTicksLimit: 12,
-            maxRotation: 0,
-            minRotation: 0,
-            padding: 8,
-            font: {
-              family: "'JetBrains Mono', monospace",
-              size: 11,
-              weight: "500",
-            },
-            color: "#64748b",
-            callback: function (val, index) {
-              const fullDate = this.getLabelForValue(val);
-              if (!fullDate || typeof fullDate !== "string") return fullDate;
-              const parts = fullDate.split("-");
-              if (parts.length === 3) {
-                const months = [
-                  "Yan", "Fev", "Mar", "Apr", "May", "Iyun",
-                  "Iyul", "Avg", "Sen", "Okt", "Noy", "Dek"
-                ];
-                const mIdx = parseInt(parts[1], 10) - 1;
-                const mName = months[mIdx] || parts[1];
-                return `${parseInt(parts[2], 10)} ${mName}`;
-              }
-              return fullDate;
-            },
-          },
-        },
-        y: {
-          min: -1.0,
-          max: 1.0,
-          title: {
-            display: true,
-            text: t("chart.axisTitle"),
-            font: { family: "'Inter', sans-serif", size: 12, weight: "600" },
-            color: "#475569",
-          },
-          grid: {
-            color: "rgba(226, 232, 240, 0.6)",
-            drawBorder: false,
-          },
-          ticks: {
-            padding: 6,
-            font: { family: "'JetBrains Mono', monospace", size: 11 },
-            color: "#64748b",
-          },
-        },
-      },
-    },
-  });
-}
-
-/* =========================================================
-   8. RAG KNOWLEDGE BASE (MODAL & MULTI-BOOK MANAGER)
-   ========================================================= */
-$("ragModalBtn")?.addEventListener("click", () => {
-  $("ragModal")?.classList.remove("hidden");
-  loadRagBooks();
-});
-
-$("closeRagModal")?.addEventListener("click", () => {
-  $("ragModal")?.classList.add("hidden");
-});
-
-async function loadRagBooks() {
-  try {
-    const books = await apiFetch("/api/rag/books");
-    state.ragBooks = Array.isArray(books) ? books : [];
-    renderRagBooksGrid();
-    updateSelectedBookIds();
-  } catch (err) {
-    console.warn("RAG kitoblarni yuklab bo'lmadi:", err);
-    state.ragBooks = [];
-    renderRagBooksGrid();
-  }
-}
-
-function updateSelectedBookIds() {
-  const activeBooks = state.ragBooks.filter((b) => b.indexed && b.is_active && b.id !== null);
-  state.selectedBookIds = activeBooks.map((b) => b.id);
-  renderActiveBooksTags(activeBooks.map((b) => b.name));
-}
-
-function renderRagBooksGrid() {
-  const container = $("ragBooksGrid");
-  if (!container) return;
-
-  if (!state.ragBooks || !state.ragBooks.length) {
-    container.innerHTML = `<p class="muted-note">Agronomik kitoblar bazasi topilmadi.</p>`;
-    return;
-  }
-
-  container.innerHTML = "";
-  state.ragBooks.forEach((book) => {
-    const card = document.createElement("div");
-    card.className = "rag-doc-card";
-
-    const statusBadge = `<span class="badge" style="background:#ecfdf5; color:#059669; border:1px solid #a7f3d0;">✅ 768-dim Tayyor (${book.chunk_count} fragment)</span>`;
-
-    card.innerHTML = `
-      <div class="doc-info" style="width:100%;">
-        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:0.5rem;">
-          <div>
-            <strong class="doc-name" style="font-size:0.95rem;">📖 ${book.name}</strong>
-            <div class="doc-meta" style="margin-top:0.25rem;">
-              ${book.total_pages ? `${book.total_pages} sahifa · ` : ""}${book.chunk_count} ta bilim fragmenti
-            </div>
-          </div>
-          ${statusBadge}
+    if (!sources || !sources.length) {
+      list.innerHTML = `<p style="color: var(--color-text-muted);">Manbalar mavjud emas.</p>`;
+    } else {
+      list.innerHTML = sources
+        .map(
+          (s) => `
+        <div class="source-item-card">
+          <div class="source-item-title">\ud83d\udcd6 ${s.document_name || "Qo'llanma"}</div>
+          <div class="source-item-score">Sahifa: ${s.page_number || "\u2014"} \u00b7 Score: ${s.score ? s.score.toFixed(2) : "\u2014"}</div>
+          <div class="source-item-text">"${s.text}"</div>
         </div>
-        <label class="checkbox-label" style="font-size:0.85rem; margin-top:0.6rem; display:inline-flex; align-items:center; gap:0.4rem; cursor:pointer;">
-          <input type="checkbox" ${book.is_active ? "checked" : ""} onchange="toggleRagBook(${book.id}, this.checked)" />
-          <strong>RAG qidiruvi uchun faol</strong>
-        </label>
-      </div>
-    `;
-    container.appendChild(card);
-  });
-}
-
-window.toggleRagBook = async function (bookId, isActive) {
-  try {
-    await apiFetch(`/api/rag/books/${bookId}/toggle`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ is_active: isActive }),
-    });
-    await loadRagBooks();
-  } catch (err) {
-    alert(`Holatni o'zgartirib bo'lmadi: ${err.message}`);
-  }
-};
-
-
-/* =========================================================
-   PURGE DATABASE HANDLERS
-   ========================================================= */
-$("purgeDbBtn")?.addEventListener("click", () => {
-  if ($("purgePasswordInput")) $("purgePasswordInput").value = "";
-  if ($("purgeMessage")) {
-    $("purgeMessage").textContent = "";
-    $("purgeMessage").className = "status-msg";
-  }
-  $("purgeModal")?.classList.remove("hidden");
-});
-
-$("closePurgeModalBtn")?.addEventListener("click", () => {
-  $("purgeModal")?.classList.add("hidden");
-});
-
-$("cancelPurgeBtn")?.addEventListener("click", () => {
-  $("purgeModal")?.classList.add("hidden");
-});
-
-$("confirmPurgeBtn")?.addEventListener("click", async () => {
-  const pwd = $("purgePasswordInput")?.value.trim() || "";
-  if (pwd.toLowerCase() !== "roziman") {
-    showStatus("purgeMessage", "❌ Parol noto'g'ri. Tasdiqlash uchun 'roziman' so'zini kiriting.", "error");
-    return;
+      `
+        )
+        .join("");
+    }
+    drawer.classList.add("open");
   }
 
-  const btn = $("confirmPurgeBtn");
-  if (btn) {
-    btn.disabled = true;
-    btn.classList.add("btn-loading");
-  }
-  showStatus("purgeMessage", "Baza tozalanmoqda...", "loading");
+  // Knowledge Base RAG Books
+  async function loadKnowledgeBaseBooks() {
+    const grid = document.getElementById("kb-books-grid");
+    const activeCountEl = document.getElementById("kb-active-count");
+    const indexedCountEl = document.getElementById("kb-indexed-count");
+    if (!grid) return;
 
-  try {
-    const res = await apiFetch("/api/database/purge-fields", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ confirmation: pwd }),
-    });
-
-    showStatus("purgeMessage", `✅ ${res.message}`, "success");
-
-    // Clear client storages
     try {
-      localStorage.removeItem("zamintahlil_last_field");
-      sessionStorage.clear();
-    } catch {}
+      const books = await api.getRagBooks();
+      const activeCount = books.filter((b) => b.is_active).length;
+      if (activeCountEl) activeCountEl.textContent = `Faol: ${activeCount}`;
+      if (indexedCountEl) indexedCountEl.textContent = `Indekslangan: ${books.length}`;
 
-    // Reset state
-    state.fields = [];
-    state.selectedField = null;
-    state.chatHistory = [];
-    state.selectedAcquisition = null;
-    state.draftGeometry = null;
+      if (!books.length) {
+        grid.innerHTML = `<p style="color: var(--color-text-muted);">${window.i18n.t("knowledge.emptyBooks")}</p>`;
+        return;
+      }
 
-    if (fieldsFeatureGroup) fieldsFeatureGroup.clearLayers();
-    if (hotspotGroup) hotspotGroup.clearLayers();
-    if (drawnItems) drawnItems.clearLayers();
+      grid.innerHTML = books
+        .map(
+          (b) => `
+        <div class="card" style="display: flex; flex-direction: column; justify-content: space-between;">
+          <div>
+            <h3 style="font-size: 1.05rem; font-weight: 750; margin-bottom: 6px;">\ud83d\udcda ${b.name}</h3>
+            <p style="font-size: 0.82rem; color: var(--color-text-muted); margin-bottom: 12px;">
+              ${b.total_pages || 0} sahifa \u00b7 ${b.chunk_count || 0} bo'lak
+            </p>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--color-border); padding-top: 12px;">
+            <span style="font-size: 0.82rem; font-weight: 700; color: ${b.is_active ? "var(--color-primary)" : "var(--color-text-muted)"};">
+              ${b.is_active ? "\u25cf AI uchun faol" : "\u25cb O'chirilgan"}
+            </span>
+            <label class="switch">
+              <input type="checkbox" class="kb-book-toggle" data-id="${b.id}" ${b.is_active ? "checked" : ""} />
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
+      `
+        )
+        .join("");
 
-    renderSavedFieldsList();
-    if ($("fieldCount")) $("fieldCount").textContent = "0";
-    if ($("fieldsCountBadge")) $("fieldsCountBadge").textContent = "0";
-    if ($("totalAreaStat")) $("totalAreaStat").textContent = "0 ga";
-    if ($("totalFieldsStat")) $("totalFieldsStat").textContent = "0";
-
-    $("fieldForm")?.reset();
-    if ($("draftArea")) $("draftArea").textContent = t("composer.areaPlaceholder");
-    if ($("selectionState")) $("selectionState").textContent = t("story.fieldNotSelected");
-
-    $("detail")?.classList.add("hidden");
-    $("emptyState")?.classList.remove("hidden");
-
-    setTimeout(() => {
-      $("purgeModal")?.classList.add("hidden");
-    }, 1000);
-  } catch (err) {
-    showStatus("purgeMessage", `❌ ${err.message}`, "error");
-  } finally {
-    if (btn) {
-      btn.disabled = false;
-      btn.classList.remove("btn-loading");
+      grid.querySelectorAll(".kb-book-toggle").forEach((toggle) => {
+        toggle.addEventListener("change", async () => {
+          const bookId = parseInt(toggle.getAttribute("data-id"), 10);
+          const isActive = toggle.checked;
+          try {
+            await api.toggleRagBook(bookId, isActive);
+            showToast(window.i18n.t("toasts.bookToggled"), "success");
+            loadKnowledgeBaseBooks();
+          } catch (err) {
+            toggle.checked = !isActive;
+            showToast(err.message, "error");
+          }
+        });
+      });
+    } catch (err) {
+      console.error("Failed to load RAG books:", err);
     }
   }
-});
 
+  // 3-Step Field Creation Wizard
+  function initFieldWizard() {
+    let step = 1;
+    const modal = document.getElementById("modal-field-wizard");
+    const mapEl = document.getElementById("wizard-map");
 
-/* =========================================================
-   9. TABS NAVIGATION & INITIALIZATION
-   ========================================================= */
-document.querySelectorAll(".tab-btn").forEach((btn) => {
-  btn.addEventListener("click", () => {
-    const targetTab = btn.getAttribute("data-tab");
-    document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
-    document.querySelectorAll(".tab-content").forEach((c) => c.classList.remove("active"));
+    function updateStepUI() {
+      document.getElementById("step-node-1").classList.toggle("active", step >= 1);
+      document.getElementById("step-node-2").classList.toggle("active", step >= 2);
+      document.getElementById("step-node-3").classList.toggle("active", step >= 3);
 
-    btn.classList.add("active");
-    $(targetTab)?.classList.add("active");
-    state.activeTab = targetTab;
+      document.getElementById("wizard-step-1-content").style.display = step === 1 ? "block" : "none";
+      document.getElementById("wizard-step-2-content").style.display = step === 2 ? "flex" : "none";
+      document.getElementById("wizard-step-3-content").style.display = step === 3 ? "flex" : "none";
 
-    if (targetTab === "tab-satellite" && imageMap) {
-      setTimeout(() => {
-        imageMap.invalidateSize();
-        if (state.selectedField && state.selectedField.geometry) {
-          const b = L.geoJSON(state.selectedField.geometry).getBounds();
-          if (b.isValid()) imageMap.fitBounds(b, { padding: [35, 35] });
-        }
-      }, 80);
+      document.getElementById("btn-wizard-back").style.display = step > 1 ? "inline-flex" : "none";
+      document.getElementById("btn-wizard-next").style.display = step < 3 ? "inline-flex" : "none";
+      document.getElementById("btn-wizard-save-field").style.display = step === 3 ? "inline-flex" : "none";
+
+      if (step === 1 && state.maps.wizard) {
+        setTimeout(() => state.maps.wizard.invalidateSize(), 100);
+      }
     }
-  });
-});
 
-$("langSwitch")?.addEventListener("change", (e) => {
-  const newLang = e.target.value;
-  if (window.i18n) {
-    window.i18n.setLanguage(newLang);
-    renderSavedFieldsList();
-    if (state.selectedField) {
-      $("fieldMeta").textContent = t("detail.metaTemplate", {
-        area: fmtNum(state.selectedField.area_hectares, 1),
-        planted: state.selectedField.planted_on ? state.selectedField.planted_on.split("T")[0] : "—",
-        stage: state.selectedField.growth_stage || "—",
+    function initWizardMap() {
+      if (state.maps.wizard || !mapEl) return;
+
+      const wizardMap = L.map("wizard-map", {
+        center: [41.311081, 69.240562],
+        zoom: 13,
+      });
+
+      L.tileLayer(
+        "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+        { maxZoom: 19 }
+      ).addTo(wizardMap);
+
+      const drawnItems = new L.FeatureGroup();
+      wizardMap.addLayer(drawnItems);
+      state.maps.drawnItems = drawnItems;
+
+      const drawControl = new L.Control.Draw({
+        draw: {
+          polygon: {
+            allowIntersection: false,
+            shapeOptions: { color: "#22c55e", fillColor: "#16a34a", fillOpacity: 0.3 },
+          },
+          polyline: false,
+          rectangle: false,
+          circle: false,
+          marker: false,
+          circlemarker: false,
+        },
+        edit: { featureGroup: drawnItems },
+      });
+      wizardMap.addControl(drawControl);
+
+      wizardMap.on(L.Draw.Event.CREATED, (e) => {
+        drawnItems.clearLayers();
+        drawnItems.addLayer(e.layer);
+        state.wizardDraft = e.layer.toGeoJSON().geometry;
+        const areaHa = (L.GeometryUtil ? L.GeometryUtil.geodesicArea(e.layer.getLatLngs()[0]) / 10000 : 1.5).toFixed(2);
+        const areaDisp = document.getElementById("wizard-area-display");
+        if (areaDisp) areaDisp.textContent = `Hisoblangan maydon: ~${areaHa} ha (WGS84)`;
+      });
+
+      state.maps.wizard = wizardMap;
+    }
+
+    document.getElementById("btn-open-field-wizard")?.addEventListener("click", () => {
+      step = 1;
+      updateStepUI();
+      modal.classList.add("open");
+      initWizardMap();
+    });
+
+    document.getElementById("btn-dash-add-field")?.addEventListener("click", () => {
+      step = 1;
+      updateStepUI();
+      modal.classList.add("open");
+      initWizardMap();
+    });
+
+    document.getElementById("btn-wizard-close")?.addEventListener("click", () => {
+      modal.classList.remove("open");
+    });
+
+    document.getElementById("btn-wizard-cancel")?.addEventListener("click", () => {
+      modal.classList.remove("open");
+    });
+
+    document.getElementById("btn-wizard-clear-draw")?.addEventListener("click", () => {
+      if (state.maps.drawnItems) state.maps.drawnItems.clearLayers();
+      state.wizardDraft = null;
+      const areaDisp = document.getElementById("wizard-area-display");
+      if (areaDisp) areaDisp.textContent = "Hisoblangan maydon: 0.00 ha";
+    });
+
+    document.getElementById("btn-wizard-next")?.addEventListener("click", () => {
+      if (step === 1) {
+        if (!state.wizardDraft) {
+          showToast(window.i18n.t("wizard.errorNoPolygon"), "error");
+          return;
+        }
+        step = 2;
+        updateStepUI();
+      } else if (step === 2) {
+        const crop = document.getElementById("wizard-crop-name")?.value?.trim();
+        const planted = document.getElementById("wizard-planted-date")?.value;
+        const stage = document.getElementById("wizard-growth-stage")?.value?.trim();
+
+        if (!crop || !planted || !stage) {
+          showToast("Barcha maydonlarni to'ldiring!", "error");
+          return;
+        }
+
+        document.getElementById("wizard-summary-area").textContent = "Hisoblanmoqda...";
+        document.getElementById("wizard-summary-crop").textContent = crop;
+        document.getElementById("wizard-summary-planted").textContent = planted;
+        document.getElementById("wizard-summary-stage").textContent = stage;
+
+        step = 3;
+        updateStepUI();
+      }
+    });
+
+    document.getElementById("btn-wizard-back")?.addEventListener("click", () => {
+      if (step > 1) {
+        step -= 1;
+        updateStepUI();
+      }
+    });
+
+    document.getElementById("btn-wizard-save-field")?.addEventListener("click", async () => {
+      const crop = document.getElementById("wizard-crop-name")?.value?.trim();
+      const planted = document.getElementById("wizard-planted-date")?.value;
+      const stage = document.getElementById("wizard-growth-stage")?.value?.trim();
+
+      const payload = {
+        geometry: state.wizardDraft,
+        crop_name: crop,
+        planted_on: planted,
+        growth_stage: stage,
+      };
+
+      try {
+        showToast(window.i18n.t("wizard.saving"), "info");
+        const newField = await api.createField(payload);
+        showToast(window.i18n.t("wizard.savedSuccess"), "success");
+        modal.classList.remove("open");
+        await loadFields();
+        selectField(newField);
+        switchView("satellite");
+      } catch (err) {
+        if (err.status === 409) {
+          showToast(window.i18n.t("wizard.errorDuplicate"), "error");
+        } else {
+          showToast(err.message, "error");
+        }
+      }
+    });
+  }
+
+  // Database Purge System
+  function initPurgeSystem() {
+    const modal = document.getElementById("modal-purge-database");
+    const openBtn = document.getElementById("btn-open-purge-modal");
+    const closeBtn = document.getElementById("btn-close-purge-modal");
+    const cancelBtn = document.getElementById("btn-cancel-purge-db");
+    const confirmBtn = document.getElementById("btn-confirm-purge-db");
+    const input = document.getElementById("purge-confirm-input");
+
+    openBtn?.addEventListener("click", () => {
+      if (input) input.value = "";
+      modal.classList.add("open");
+    });
+
+    closeBtn?.addEventListener("click", () => modal.classList.remove("open"));
+    cancelBtn?.addEventListener("click", () => modal.classList.remove("open"));
+
+    confirmBtn?.addEventListener("click", async () => {
+      const val = input?.value?.trim().toLowerCase();
+      if (val !== "roziman") {
+        showToast(window.i18n.t("settings.purgeError"), "error");
+        return;
+      }
+
+      try {
+        await api.purgeFields("roziman");
+        showToast(window.i18n.t("settings.purgeSuccess"), "success");
+        modal.classList.remove("open");
+        state.selectedField = null;
+        state.fields = [];
+        await loadFields();
+        switchView("dashboard");
+      } catch (err) {
+        showToast(err.message, "error");
+      }
+    });
+  }
+
+  // Global Event Listeners & Bootstrapping
+  function initEventListeners() {
+    // Navigation items
+    document.querySelectorAll(".nav-item").forEach((item) => {
+      item.addEventListener("click", () => {
+        const view = item.getAttribute("data-view");
+        if (view) switchView(view);
+      });
+    });
+
+    // Logo click goes to Dashboard
+    document.getElementById("brand-logo-link")?.addEventListener("click", (e) => {
+      e.preventDefault();
+      switchView("dashboard");
+    });
+
+    // Topbar Language Selector
+    const langSelect = document.getElementById("language-select");
+    if (langSelect) {
+      langSelect.value = window.i18n.getLanguage();
+      langSelect.addEventListener("change", () => {
+        window.i18n.setLanguage(langSelect.value);
       });
     }
-  }
-});
 
-// App Startup
-window.addEventListener("DOMContentLoaded", async () => {
-  initMaps();
-  if (window.i18n) {
-    window.i18n.applyStatic();
-    if ($("langSwitch")) $("langSwitch").value = window.i18n.current;
-  }
-
-  // Check API health
-  try {
-    const statusEl = $("apiStatus");
-    await apiFetch("/api/fields");
-    if (statusEl) {
-      statusEl.setAttribute("data-state", "ok");
-      statusEl.querySelector(".status-text").textContent = t("nav.statusOk");
+    // Settings Language Selector sync
+    const settingsLang = document.getElementById("settings-lang-select");
+    if (settingsLang) {
+      settingsLang.value = window.i18n.getLanguage();
+      settingsLang.addEventListener("change", () => {
+        window.i18n.setLanguage(settingsLang.value);
+        if (langSelect) langSelect.value = settingsLang.value;
+      });
     }
-  } catch {
-    const statusEl = $("apiStatus");
-    if (statusEl) {
-      statusEl.setAttribute("data-state", "error");
-      statusEl.querySelector(".status-text").textContent = t("nav.statusError");
-    }
+
+    // Dashboard CTAs
+    document.getElementById("btn-dash-view-all-fields")?.addEventListener("click", () => switchView("fields"));
+
+    // Layer Selector Chips on Map
+    document.querySelectorAll(".layer-chip").forEach((chip) => {
+      chip.addEventListener("click", () => {
+        document.querySelectorAll(".layer-chip").forEach((c) => c.classList.remove("active"));
+        chip.classList.add("active");
+        state.selectedLayer = chip.getAttribute("data-layer");
+        const legendName = document.getElementById("legend-layer-name");
+        if (legendName) legendName.textContent = state.selectedLayer;
+        if (state.selectedAcquisition) {
+          loadAcquisitionArtifacts(state.selectedAcquisition);
+        }
+      });
+    });
+
+    // A/B Compare Toggle & Range
+    const compareToggle = document.getElementById("compare-toggle");
+    const swipeBox = document.getElementById("swipe-slider-box");
+    const swipeRange = document.getElementById("swipe-range");
+
+    compareToggle?.addEventListener("change", () => {
+      state.compare = compareToggle.checked;
+      if (swipeBox) swipeBox.style.display = state.compare ? "flex" : "none";
+      applySwipe();
+    });
+
+    swipeRange?.addEventListener("input", () => {
+      state.swipePercent = parseInt(swipeRange.value, 10);
+      applySwipe();
+    });
+
+    // Run Satellite Analysis
+    document.getElementById("btn-run-analysis")?.addEventListener("click", async () => {
+      if (!state.selectedField) {
+        showToast("Avval dala tanlang!", "error");
+        return;
+      }
+      const mode = document.getElementById("select-analysis-mode")?.value || "latest";
+      try {
+        showToast(window.i18n.t("satellite.btnAnalyzing"), "info");
+        await api.analyzeField(state.selectedField.id, mode);
+        showToast(window.i18n.t("toasts.analysisDone"), "success");
+        selectField(state.selectedField);
+      } catch (err) {
+        showToast(err.message, "error");
+      }
+    });
+
+    // Monitoring Date Filter Button
+    document.getElementById("loadHistoryButton")?.addEventListener("click", () => {
+      loadHistoricalMetrics();
+    });
+
+    // Yield Prediction Button
+    document.getElementById("btn-run-yield-predict")?.addEventListener("click", () => {
+      handlePredictYield();
+    });
+
+    // Chat Send Button & Enter Key
+    document.getElementById("btn-chat-send")?.addEventListener("click", () => {
+      handleSendChatMessage();
+    });
+
+    document.getElementById("chat-message-input")?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        handleSendChatMessage();
+      }
+    });
+
+    // Sources Drawer Close Button
+    document.getElementById("btn-close-sources-drawer")?.addEventListener("click", () => {
+      document.getElementById("drawer-rag-sources")?.classList.remove("open");
+    });
   }
 
-  await loadFields();
-  await loadYieldModels();
-});
+  // Application Startup
+  async function init() {
+    window.i18n.applyTranslations();
+    initMainMap();
+    initEventListeners();
+    initFieldWizard();
+    initPurgeSystem();
+    await loadFields();
+  }
+
+  window.addEventListener("DOMContentLoaded", init);
+})();
