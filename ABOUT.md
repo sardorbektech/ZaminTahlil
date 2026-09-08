@@ -109,6 +109,7 @@ graph TD
   5. `EVI`: Rivojlangan vegetatsiya indeksi (atmosfera xatoliklaridan tozalangan);
   6. `BSI`: Ochiq tuproq va sho‘rlanish indeksi;
   7. `QA`: Sifat nazorati (SCL va dataMask bo‘yicha bulut/soya filtri).
+- **1 Kunda Faqat 1 ta Eng Kam Bulutli Tasvir**: Sentinel-2 yo‘ldoshining kesishuvchi orbitalari (swaths) bitta dala uchun ayni bir kunda bir nechta tasvir keltirganda, tizim avtomatik ravishda bulutlilik darajasi (`cloud_coverage`) eng minimal bo‘lgan yagona eng toza tasvirni saralab oladi. Natijada dropdownda va tahlillarda takroriy kunlar butunlay bartaraf etiladi.
 - **A/B Swipe Taqqoslash**: Turli sanalardagi yoki turli indekslardagi tasvirlarni slayd (swipe) chizig‘i orqali o‘zaro solishtirish imkoniyati.
 - **Aniq Koordinatali Overlay**: Barcha qatlamlar o‘zining haqiqiy geodezik bounding boxi (`artifact.bbox`) bo‘yicha to‘g‘ridan-to‘g‘ri dala xaritasiga joylashtiriladi (`L.imageOverlay`).
 
@@ -180,6 +181,11 @@ Loyiha 4 ta ixtisoslashgan agronomik RAG strategiyasini o‘z ichiga oladi va fo
   - Ekin fenologiyasi (ekilganidan beri o‘tgan kunlar, o‘rim-yig‘imgacha qolgan kunlar, mavsumiy rivojlanish fazasi, siklik sinus/kosinus parametrlar).
 - **Pre-trained Modellar**: `CatBoost`, `LightGBM`, `XGBoost`, `Random Forest`, `Gradient Boosting`.
 - **Natijalar**: 1 Gektar hosildorligi ($t/ga$), ishonchlilik oralig‘i ($\pm \sigma$), butun dalaning jami hosili ($tonna$), eng muhim 10 ta ta’sir omili ($Top\ Features$) hamda 2 o‘qli interaktiv fenologiya grafigi (`Chart.js`) va oylik batafsil jadval.
+- **Bashorat Manbalari Shaffofligi (`data_sources`)**: Hosilni hisoblashda qaysi axborot oqimidan qancha hajmda foydalanilgani foydalanuvchiga interaktiv kartalar shaklida ko‘rsatiladi:
+  1. `🛰️ Sentinel-2 L2A (Optik)`: Real multispektral tasvirlar soni (B02–B12, NDVI, NDRE, EVI);
+  2. `🌤️ Agrometeorologiya (Open-Meteo & NASA)`: Kunlik agrometeorologik o‘lchovlar soni (harorat, yog‘in, radiatsiya, shamol);
+  3. `🌱 Tuproq dinamikasi`: 3 ta chuqurlik qatlami (0–7 sm, 7–28 sm, 28–100 sm) bo‘yicha volumetrik namlik va ildiz zonasi harorati;
+  4. `📡 Sentinel-1 SAR Radar`: C-band mikroto‘lqinli radar o‘lchovlari soni (VV/VH qutblanish).
 
 ### 3.8. Dala Muloqotlari, Avtomatik Xulosa va Manba Belgilari (Provenance Badges)
 - **Doimiy Xotira**: Muloqot xabarlari server SQLite bazasiga (`field_chat_messages`) saqlanadi.
@@ -195,6 +201,7 @@ Loyiha 4 ta ixtisoslashgan agronomik RAG strategiyasini o‘z ichiga oladi va fo
 ### 3.9. Yillik va Tarixiy Indekslar Dinamikasi
 - **Boshlanish Sanasi**: Sukut bo‘yicha **`01.01.2026`** (joriy yilning 1-yanvari) qilib sozlangan va yil o‘zgarganda avtomatik sinxronlanadi.
 - **Chart.js Dinamikasi**: Barcha 5 ta asosiy indeksning ($NDVI, NDMI, NDRE, EVI, BSI$) yillar bo‘yicha o‘zgarish egri chizig‘i.
+- **Vaqt O‘qining Toza Dizayni**: X o‘qida sanalar gorizontal (`maxRotation: 0`), avtomatik oraliqlash (`autoSkip: true, maxTicksLimit: 12`) va ixcham `DD MMM` (masalan: `3 Yan`, `15 Yan`, `4 Fev`, `1 Mar`) ko‘rinishida chiziladi. 420px balandlikdagi konteyner pastki matn kesilishining oldini oladi, hover paytida tooltipda to‘liq sana (`📅 YYYY-MM-DD`) va barcha 5 indeks qiymatlari aks etadi.
 
 ### 3.10. Dala Maydonlari Bazasini Xavfsiz Tozalash
 - **Sidebar Tozalash Tugmasi**: `🗑️ Tozalash` tugmasi va xavfsizlik modali;
@@ -246,7 +253,7 @@ Loyiha Google Cloud VM xotirasini tejash uchun faqat eng zaruriy 20 ta toza kutu
 | **Tashqi API-lar** | Copernicus Data Space Ecosystem (Sentinel-2 L2A), Open-Meteo Multi-Endpoint, NASA POWER API |
 | **Frontend** | Vanilla JavaScript (ES6+), Leaflet, Leaflet-Draw, Chart.js, Marked.js, DOMPurify |
 | **Dizayn Tizimi** | Modern Vanilla CSS (Sonar Radar Marker, Glassmorphism, Responsive Grid & Flexbox, Cache-Busted Assets) |
-| **Xavfsizlik & Test** | Pure ASGI Security Headers, Sensitive Data Log Masking, PyTest (66 test, 100% pass) |
+| **Xavfsizlik & Test** | Pure ASGI Security Headers, Sensitive Data Log Masking, PyTest (69 test, 100% pass) |
 
 ---
 
@@ -263,7 +270,7 @@ Loyiha quyidagi 10 ta jadvaldan iborat relying bazaga ega:
 7. **`field_chat_summaries`**: Dala muloqotlarining lo‘nda, qisqa xulosasi (Summary) va xabarlar soni.
 8. **`rag_documents`**: Bazaga kiritilgan PDF kitoblar (`is_active`, `embedding_model`, `embedding_dim`, nomi, fayl yo‘li, sahifalar va bo‘laklar soni).
 9. **`rag_chunks`**: Kitoblardan ajratilgan matn bo‘laklari va 768-o‘lchamli vektorlar (`embedding BLOB`).
-10. **`yield_predictions`**: Hosildorlik bashorati tarixi (model, $t/ga$, jami tonna, top parametrlar, fenologiya).
+10. **`yield_predictions`**: Hosildorlik bashorati tarixi (model, $t/ga$, jami tonna, top parametrlar, fenologiya, `data_sources_json`).
 
 ---
 
@@ -276,8 +283,8 @@ Loyiha quyidagi 10 ta jadvaldan iborat relying bazaga ega:
 - `POST /api/database/purge-fields` — Barcha dala maydonlari va tahlillarni tozalash (Parol: `roziman`).
 
 ### Sun’iy Yo‘ldosh Tahlili & Radar Hotspot
-- `POST /api/fields/{id}/analyze` — Oxirgi 14 kunlik Sentinel Hub tasvirlarini yuklash va 10+ indekslarni hisoblash.
-- `GET /api/fields/{id}/acquisitions` — Dalaning barcha mavjud kuzatuvlari.
+- `POST /api/fields/{id}/analyze` — Oxirgi 14 kunlik Sentinel Hub tasvirlarini yuklash (har bir kundan faqat 1 ta eng kam bulutli) va 10+ indekslarni hisoblash.
+- `GET /api/fields/{id}/acquisitions` — Dalaning barcha mavjud kuzatuvlari (kunlar bo‘yicha deduplikatsiyalangan).
 - `GET /api/fields/{id}/acquisitions/{acq_id}/artifacts` — Qatlamlar statistikasi, rasm havolalari va eng past NDRE o‘chog‘ining `hotspot_coordinates` [lat, lon] qiymati.
 - `GET /api/fields/{id}/acquisitions/{acq_id}/images/{layer}` — Qatlamning PNG tasvirini olish (RGB, NDVI, NDMI, NDRE, EVI, BSI, QA).
 - `GET /api/fields/{id}/annual-metrics?year=2026` — Yillik indekslar dinamikasi.
@@ -285,8 +292,8 @@ Loyiha quyidagi 10 ta jadvaldan iborat relying bazaga ega:
 
 ### Hosildorlikni Bashorat Qilish (ML)
 - `GET /api/yield/models` — Mavjud ML modellari (`CatBoost`, `LightGBM`, `XGBoost`, `RandomForest`, `GradientBoosting`).
-- `POST /api/fields/{id}/predict-yield` — 122 ta parametr va real Sentinel-2 o‘lchovlari asosida hosildorlikni hisoblash ($t/ga$, jami tonna, ishonchlilik oralig‘i, top omillar).
-- `GET /api/fields/{id}/yield-latest` — Dalaning oxirgi hosildorlik bashorati.
+- `POST /api/fields/{id}/predict-yield` — 122 ta parametr va real Sentinel-2 o‘lchovlari asosida hosildorlikni hisoblash ($t/ga$, jami tonna, ishonchlilik oralig‘i, top omillar va `data_sources` ro‘yxati).
+- `GET /api/fields/{id}/yield-latest` — Dalaning oxirgi hosildorlik bashorati (ishonchlilik oraliqlari va `data_sources` bilan).
 
 ### RAG Bilimlar Bazasi (Ko‘p Kitobli va 4-Pog‘onali Boshqaruv)
 - `GET /api/rag/books` — Barcha mavjud kitoblar va ularning faollik holati (`indexed`, `is_active`, `total_pages`, `chunk_count`).

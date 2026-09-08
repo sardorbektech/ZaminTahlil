@@ -114,22 +114,22 @@ Brauzer orqali oching:
 
 ---
 
-## 📚 Agronomiya Kitoblarini RAG Bazasiga Kiritish
+## 📚 Agronomiya Kitoblarini RAG Bazasiga Kiritish (Offline Developer Workflow)
 
-Foydalanuvchi istalgan agronomik PDF qo‘llanma yoki darsliklarni bilimlar bazasiga kiritishi mumkin. Kiritilgan kitoblar avtomatik bo‘laklarga bo‘linadi va lokal `fastembed` modeli orqali vektorlashtiriladi.
+Server (VM) resurslari va operativ xotirasini tejash maqsadida og‘ir PDF qayta ishlash serverdan butunlay chiqarilgan. Barcha kitoblar dasturchining kompyuterida lokal tarzda vektorlashtiriladi va ixcham `data/rag_seed.json` orqali Gitga tushadi.
 
-### 1-usul: CLI Terminal orqali (Tavsiya etiladi)
-```bash
-python scripts/ingest_book.py "C:\kitoblar\paxtachilik_qollanmasi.pdf" --name "Paxtachilik amaliy qo'llanmasi"
-```
+### 1. Dasturchi kompyuterida kitoblarni indekslash:
+1. Yangi agronomik PDF darsliklarni `data/books/` katalogiga joylashtiring.
+2. Indekslash va bilimlar grafini yaratish skriptini yurgizing:
+   ```bash
+   python scripts/ingest_books.py
+   ```
+3. Yaratilgan 768-o‘lchamli embeddinglar, matn bo‘laklari va bilimlar grafi `data/rag_seed.json` hamda `data/graph/` ga eksport qilinadi.
+4. Ushbu fayllarni Git orqali serverga (VM) yuborasiz (katta hajmli PDF fayllar `.gitignore` da xavfsiz qoladi).
 
-### 2-usul: Veb-interfeys orqali
-1. Brauzerda `http://127.0.0.1:8000` ga kiring.
-2. Yuqori o‘ng burchakdagi **"📚 Agronom Kutubxonasi"** tugmasini bosing.
-3. PDF faylning to‘liq manzilini kiriting va **"Kitobni kiritish va embedding hisoblash"** tugmasini bosing.
-
-> [!NOTE]
-> Chat orqali savol berilganda, qidiruv jarayoni, topilgan kitob sahifalari va moslik ballari (`Score`) to‘g‘ridan-to‘g‘ri server terminalida rangli ko‘rinishda aks etadi.
+### 2. Veb-interfeys orqali foydalanuvchi nazorati:
+- Serverda foydalanuvchi qo‘lda fayl yuklashi yoki o‘chirib yuborishi talab etilmaydi.
+- Interfeysdagi **"⚙️ Kitoblar"** tugmasi orqali agronomlar mavjud kitoblardan qaysilari sun’iy intellekt qidiruvida ishtirok etishini shunchaki **Yoqish (ON)** yoki **O‘chirish (OFF)** orqali boshqaradi.
 
 ---
 
@@ -142,20 +142,29 @@ Loyihada paxta va kuzgi bug‘doy uchun oldindan o‘qitilgan Machine Learning m
 - `RandomForest`
 - `GradientBoosting`
 
-### Ishlash tartibi:
+### Ishlash tartibi va Natijalar:
 1. Xaritada dala belgilang yoki saqlangan dalani tanlang.
 2. **"Hosilni bashorat qilish"** bo‘limiga o‘ting.
 3. Ekin turini (`Paxta` yoki `Kuzgi Bug'doy`) va istalgan ML modelini tanlang.
 4. **"Hosilni hisoblash"** tugmasini bosing. Tizim avtomatik ravishda:
-   - Dala koordinatalari bo‘yicha Open-Meteo API dan real kunlik ob-havo va tuproq namligi ma’lumotlarini oladi;
+   - Dala koordinatalari bo‘yicha Open-Meteo & NASA POWER API dan real kunlik ob-havo va tuproq namligini oladi;
    - Sentinel-2 va Sentinel-1 oylik spektral ko‘rsatkichlarini integratsiya qiladi;
-   - 122 ta ML parametrlar matritsasini tuzadi va 1 gektar hosilini ($t/ga$), umumiy hosilni ($tonna$), ishonchlilik oralig‘ini hamda eng ta’sirchan omillarni ($Top\ Features$) chiqarib beradi.
+   - 122 ta ML parametrlar matritsasini tuzadi va 1 gektar hosilini ($t/ga$), umumiy hosilni ($tonna$), ishonchlilik oralig‘ini chiqarib beradi;
+   - **Bashorat Manbalari Shaffofligi (`data_sources`)**: Hisoblashda qaysi axborot oqimidan qancha hajmda foydalanilganini ko‘rsatadi (Sentinel-2 tasvirlari soni, ob-havo o‘lchovlari kunlari soni, 3 qatlamli tuproq namligi, Sentinel-1 radar o‘lchovlari);
+   - Eng muhim 10 ta ta’sir omilini ($Top\ Features$) va interaktiv fenologiya grafigi (`Chart.js`) hamda oylik batafsil jadvalni taqdim etadi.
+
+---
+
+## 🛰️ Sun’iy Yo‘ldosh Monitoringi va Yillik Dinamika
+
+- **1 Kunda Faqat 1 ta Eng Kam Bulutli Tasvir**: Sentinel-2 yo‘ldoshining kesishuvchi orbitalari (swaths) bitta dala bo‘yicha bir kunda bir nechta tasvir keltirganda, tizim avtomatik ravishda bulutlilik darajasi (`cloud_coverage`) eng kam bo‘lgan 1 ta eng sifatli tasvirni tanlaydi. Dropdownda va tahlillarda bir xil sanalar takrorlanmaydi.
+- **Yillik Vaqt O‘qi Zamonaviy Dizayni**: Yillik va tarixiy dinamika grafigida X o‘qi gorizontal (`maxRotation: 0`), avtomatik oraliqlash (`autoSkip: true, maxTicksLimit: 12`) va ixcham `DD MMM` (masalan: `3 Yan`, `15 Yan`, `4 Fev`) formatida aks etadi. Pastki matn kesilib ketmaydi, hover paytida tooltipda to‘liq kalendar sana ko‘rinadi.
 
 ---
 
 ## 🧪 Avtomatlashtirilgan Testlarni Ishga Tushirish
 
-Barcha unit va integratsion testlarni (jami 56 ta test) tekshirish:
+Barcha unit va integratsion testlarni (jami 69 ta test) tekshirish:
 
 ```bash
 python -m pytest
@@ -173,37 +182,49 @@ python -m pytest -q
 ```text
 ZaminTahlil/
 ├── app/                        # Asosiy ilova kodi
+│   ├── deps.py                 # Dependency Injection va app.state initsializatsiyasi
+│   ├── main.py                 # FastAPI asosiy kirish nuqtasi va middlewarelar
+│   ├── routers/                # Modulli marshrutizatorlar
+│   │   ├── fields.py           # Dala yaratish, ro'yxat va GeoJSON amallari
+│   │   ├── analysis.py         # Sentinel-2 tahlillari, artefaktlar va yillik dinamika
+│   │   ├── chat.py             # Agro-AI muloqoti, xulosalar va xabarlar tarixi
+│   │   ├── rag_routes.py       # RAG kitoblari, faollik toggle va boshqaruv
+│   │   └── yield_routes.py     # ML hosildorlik bashorati va manbalar tahlili
 │   ├── ai.py                   # OpenAI chat va umumlashtirish (Summary) mantiqi
-│   ├── analysis.py             # Sentinel-2 tahlil xizmati
+│   ├── analysis.py             # Sentinel-2 multispektral tahlil xizmati
 │   ├── config.py               # Pydantic Settings konfiguratsiyasi
 │   ├── constants.py            # Indekslar, qatlamlar va tizim konstantalari
-│   ├── db.py                   # SQLite jadvallar sxemasi (v4)
+│   ├── db.py                   # SQLite jadvallar sxemasi (Schema v7, WAL, keshlar)
 │   ├── geometry.py             # GeoJSON polygon validatsiyasi va maydon hisobi
 │   ├── indices.py              # NDVI, NDMI, NDRE, EVI, BSI formulalari
 │   ├── language.py             # O‘zbek, rus, ingliz tillarini avtomatik aniqlash
-│   ├── main.py                 # FastAPI marshrutlari va ilova fabrikasi
-│   ├── rag.py                  # PDF o'qish, fastembed embedding va semantik qidiruv
+│   ├── rag.py                  # In-memory matrisa keshi, BM25, MMR va 4-RAG dvigateli
+│   ├── rag_graph.py            # Agronomik bilimlar grafi (Graph RAG BFS)
 │   ├── rendering.py            # PNG tasvirlarni rangli render qilish
 │   ├── repository.py           # Ma'lumotlar bazasi CRUD amallari
-│   ├── schemas.py              # Pydantic so'rov va javob modellari
-│   ├── security.py             # Xavfsizlik sarlavhalari va loglarni maskalash
-│   ├── sentinel.py             # Copernicus CDSE / Sentinel Hub mijozi
+│   ├── schemas.py              # Pydantic v2 so'rov va javob modellari
+│   ├── security.py             # Xavfsizlik sarlavhalari, rate limiter va log maskalash
+│   ├── sentinel.py             # Copernicus CDSE / Sentinel Hub mijozi (Daily dedup)
 │   ├── timeutils.py            # UTC vaqt konvertatsiyalari
-│   ├── weather.py              # Open-Meteo ob-havo API integratsiyasi
-│   ├── yield_service.py        # ML hosildorlik inferensiyasi va fenologiya
+│   ├── weather.py              # Open-Meteo & NASA POWER ob-havo integratsiyasi
+│   ├── yield_service.py        # ML hosildorlik inferensiyasi (LRU model keshi)
 │   └── static/                 # Frontend aktivlari
 │       ├── app.js              # Xarita, tahlil, hosildorlik va chat boshqaruvi
 │       ├── i18n.js             # 4 tilda mahalliylashtirish (uz-latn, uz-cyrl, ru, en)
 │       ├── index.html          # Asosiy interfeys sahifasi
 │       ├── logo.png            # Platforma logotipi
 │       └── styles.css          # Zamonaviy dizayn uslublari
+├── data/                       # Ma'lumotlar va precomputed RAG
+│   ├── rag_seed.json           # 100% precomputed RAG ko'chma seed fayli
+│   ├── graph/                  # Ekstraksiya qilingan agronomik bilimlar grafi
+│   └── books/                  # Lokal kitoblar (PDF fayllar gitignore qilingan)
 ├── models/                     # O'qitilgan ML modellar (.joblib)
 ├── scripts/                    # Yordamchi CLI skriptlar
 │   ├── cleanup_artifacts.py    # Eskirgan tasvirlarni tozalash
-│   └── ingest_book.py          # Agronomiya kitoblarini kiritish
-├── tests/                      # Pytest avtomatlashtirilgan testlari (56 ta test)
+│   └── ingest_books.py         # Offline developer RAG ingestion va export
+├── tests/                      # Pytest avtomatlashtirilgan testlari (69 ta test, 100% pass)
 ├── AGENTS.md                   # Agentlar va ishlab chiquvchilar uchun qoidalar
 ├── pyproject.toml              # Loyiha metadata va pytest sozlamalari
-├── requirements.txt            # Python bog'liqliklari ro'yxati
+├── requirements.txt            # Minimal toza bog'liqliklar ro'yxati
+├── ABOUT.md                    # To'liq arxitektura va ilmiy-texnik hujjat
 └── README.md                   # Ishga tushirish qo'llanmasi
-```
