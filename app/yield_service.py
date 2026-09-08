@@ -464,6 +464,10 @@ class YieldInferenceService:
 
         selected_file = matching[-1]
         model_obj = joblib.load(selected_file)
+        # VM RAM xotirasini tejash uchun keshda ko'pi bilan 2 ta model saqlanadi
+        while len(self._loaded_models) >= 2:
+            oldest_key = next(iter(self._loaded_models))
+            del self._loaded_models[oldest_key]
         self._loaded_models[cache_key] = model_obj
 
         feat_path = self.models_dir / f"{crop}_feature_names.joblib"

@@ -13,6 +13,7 @@ from pathlib import Path
 import pickle
 import re
 import sys
+import threading
 import time
 from typing import Any, Iterator, List, Optional, Set, Tuple
 
@@ -382,6 +383,8 @@ class RAGService:
 
         self._embedder: Any = None
         self._cached_graphs: list[Graph] | None = None
+        self._cache_lock = threading.Lock()
+        self._chunks_cache: dict[tuple[int, ...], tuple[list[dict[str, Any]], np.ndarray, BM25Scorer]] = {}
 
     def _get_embedder(self) -> Any:
         if self._embedder is None:
@@ -608,6 +611,7 @@ class RAGService:
             pickle.dump(all_graphs, f)
         self._cached_graphs = all_graphs
 
+        self.invalidate_cache()
         elapsed = time.perf_counter() - t0
         _safe_print(f"{_BOLD}{_GREEN}✅ [RAG INGEST TUGADI] {doc_name} muvaffaqiyatli indekslandi!{_RESET}")
         _safe_print(
@@ -630,6 +634,76 @@ class RAGService:
     # 8. 4 Ta RAG Strategiyasining Alohida Dvigatellari
     # ─────────────────────────────────────────────────────────
 
+    def invalidate_cache(self) -> None:
+        """Keshdagi embedding matritsasi, BM25 indeks va graflarni tozalaydi."""
+        with self._cache_lock:
+            self._chunks_cache.clear()
+            self._cached_graphs = None
+
+    def _get_cached_chunks_data(
+        self, database: Any, selected_doc_ids: list[int] | None = None
+    ) -> tuple[list[dict[str, Any]], np.ndarray | None, BM25Scorer | None]:
+        """Faol kitoblarning fragmentlari, zich embedding matritsasi va BM25 indeksini keshdan qaytaradi."""
+        with database.connect() as conn:
+            if selected_doc_ids and len(selected_doc_ids) > 0:
+                ph = ",".join("?" for _ in selected_doc_ids)
+                act_docs = conn.execute(
+                    f"SELECT id FROM rag_documents WHERE id IN ({ph}) AND is_active = 1 ORDER BY id",
+                    selected_doc_ids,
+                ).fetchall()
+            else:
+                act_docs = conn.execute(
+                    "SELECT id FROM rag_documents WHERE is_active = 1 ORDER BY id"
+                ).fetchall()
+
+        active_ids_tuple = tuple(int(r["id"]) for r in act_docs)
+        if not active_ids_tuple:
+            return [], None, None
+
+        with self._cache_lock:
+            if active_ids_tuple in self._chunks_cache:
+                return self._chunks_cache[active_ids_tuple]
+
+        ph = ",".join("?" for _ in active_ids_tuple)
+        with database.connect() as conn:
+            rows = conn.execute(
+                f"""SELECT c.id, c.document_id, d.name AS document_name, c.page_number,
+                          c.chunk_index, c.chunk_text, c.embedding
+                FROM rag_chunks c JOIN rag_documents d ON d.id = c.document_id
+                WHERE d.id IN ({ph}) AND d.is_active = 1
+                ORDER BY c.document_id, c.chunk_index""",
+                active_ids_tuple,
+            ).fetchall()
+
+        if not rows:
+            return [], None, None
+
+        rows_meta: list[dict[str, Any]] = []
+        embeddings_list: list[np.ndarray] = []
+        corpus_tokens: list[list[str]] = []
+
+        for r in rows:
+            meta = {
+                "id": int(r["id"]),
+                "document_id": int(r["document_id"]),
+                "document_name": str(r["document_name"]),
+                "page_number": int(r["page_number"]),
+                "chunk_index": int(r["chunk_index"]),
+                "chunk_text": str(r["chunk_text"]),
+            }
+            rows_meta.append(meta)
+            emb = np.frombuffer(r["embedding"], dtype=np.float32)
+            embeddings_list.append(emb)
+            corpus_tokens.append(_tokenize(meta["chunk_text"]))
+
+        dense_mat = np.array(embeddings_list, dtype=np.float32)
+        bm25_scorer = BM25Scorer(corpus_tokens)
+
+        with self._cache_lock:
+            self._chunks_cache[active_ids_tuple] = (rows_meta, dense_mat, bm25_scorer)
+
+        return rows_meta, dense_mat, bm25_scorer
+
     def search_naive(
         self,
         query: str,
@@ -638,50 +712,33 @@ class RAGService:
         threshold: float | None = None,
         selected_doc_ids: list[int] | None = None,
     ) -> list[RAGChunk]:
-        """1. NAIVE RAG: 768-dim Dense Vektor Qidiruv (FAISS/Cosine o'xshashlik)."""
+        """1. NAIVE RAG: 768-dim Dense Vektor Qidiruv (Keshlashtirilgan Dense Matrix)."""
         cutoff = threshold if threshold is not None else self.similarity_threshold
-        with database.connect() as conn:
-            if selected_doc_ids and len(selected_doc_ids) > 0:
-                ph = ",".join("?" for _ in selected_doc_ids)
-                rows = conn.execute(
-                    f"""SELECT c.id, c.document_id, d.name AS document_name, c.page_number,
-                              c.chunk_index, c.chunk_text, c.embedding
-                    FROM rag_chunks c JOIN rag_documents d ON d.id = c.document_id
-                    WHERE d.id IN ({ph}) AND d.is_active = 1""",
-                    selected_doc_ids,
-                ).fetchall()
-            else:
-                rows = conn.execute(
-                    """SELECT c.id, c.document_id, d.name AS document_name, c.page_number,
-                              c.chunk_index, c.chunk_text, c.embedding
-                    FROM rag_chunks c JOIN rag_documents d ON d.id = c.document_id
-                    WHERE d.is_active = 1"""
-                ).fetchall()
-
-        if not rows:
+        rows_meta, dense_mat, _ = self._get_cached_chunks_data(database, selected_doc_ids)
+        if not rows_meta or dense_mat is None:
             return []
 
         query_emb = self.embed_texts([query], is_query=True)[0]
-        scored = []
-        for r in rows:
-            emb = np.frombuffer(r["embedding"], dtype=np.float32)
-            score = float(np.dot(query_emb, emb))
-            scored.append((score, r))
+        if dense_mat.shape[1] == len(query_emb):
+            dense_scores = np.dot(dense_mat, query_emb)
+        else:
+            dense_scores = np.array([float(np.dot(query_emb, v[:len(query_emb)])) for v in dense_mat])
 
+        scored = list(zip(dense_scores, rows_meta))
         scored.sort(key=lambda x: x[0], reverse=True)
         results: list[RAGChunk] = []
         for score, r in scored[:top_k]:
             if score >= cutoff or (threshold is None and len(results) == 0):
                 results.append(
                     RAGChunk(
-                        id=int(r["id"]),
-                        document_id=int(r["document_id"]),
-                        document_name=str(r["document_name"]),
-                        page_number=int(r["page_number"]),
-                        chunk_index=int(r["chunk_index"]),
-                        text=str(r["chunk_text"]),
-                        score=round(score, 4),
-                        rerank_score=round(score, 4),
+                        id=r["id"],
+                        document_id=r["document_id"],
+                        document_name=r["document_name"],
+                        page_number=r["page_number"],
+                        chunk_index=r["chunk_index"],
+                        text=r["chunk_text"],
+                        score=round(float(score), 4),
+                        rerank_score=round(float(score), 4),
                         strategy="naive",
                     )
                 )
@@ -697,25 +754,8 @@ class RAGService:
     ) -> list[RAGChunk]:
         """2. ADVANCED RAG: Multi-Query + Hybrid (Dense 768-dim + Sparse BM25) + RRF + MMR + Cross Reranker."""
         cutoff = threshold if threshold is not None else self.similarity_threshold
-        with database.connect() as conn:
-            if selected_doc_ids and len(selected_doc_ids) > 0:
-                ph = ",".join("?" for _ in selected_doc_ids)
-                rows = conn.execute(
-                    f"""SELECT c.id, c.document_id, d.name AS document_name, c.page_number,
-                              c.chunk_index, c.chunk_text, c.embedding
-                    FROM rag_chunks c JOIN rag_documents d ON d.id = c.document_id
-                    WHERE d.id IN ({ph}) AND d.is_active = 1""",
-                    selected_doc_ids,
-                ).fetchall()
-            else:
-                rows = conn.execute(
-                    """SELECT c.id, c.document_id, d.name AS document_name, c.page_number,
-                              c.chunk_index, c.chunk_text, c.embedding
-                    FROM rag_chunks c JOIN rag_documents d ON d.id = c.document_id
-                    WHERE d.is_active = 1"""
-                ).fetchall()
-
-        if not rows:
+        rows_meta, dense_embs_mat, bm25 = self._get_cached_chunks_data(database, selected_doc_ids)
+        if not rows_meta or dense_embs_mat is None or bm25 is None:
             return []
 
         # 1. Multi-Query variants
@@ -725,22 +765,15 @@ class RAGService:
             query_variants.append(" ".join(tokens[:4]))
             query_variants.append(" ".join(tokens[-4:]))
 
-        # 2. Dense va Sparse BM25 qidiruv
-        chunk_texts = [str(r["chunk_text"]) for r in rows]
-        tokenized_corpus = [_tokenize(t) for t in chunk_texts]
-        bm25 = BM25Scorer(tokenized_corpus)
-
-        all_embeddings = [
-            np.frombuffer(r["embedding"], dtype=np.float32) for r in rows
-        ]
-        dense_embs_mat = np.array(all_embeddings, dtype=np.float32)
-
         ranked_lists: list[list[tuple[int, float]]] = []
 
         for q_var in query_variants:
             # Dense
             q_emb = self.embed_texts([q_var], is_query=True)[0]
-            dense_scores = np.dot(dense_embs_mat, q_emb)
+            if dense_embs_mat.shape[1] == len(q_emb):
+                dense_scores = np.dot(dense_embs_mat, q_emb)
+            else:
+                dense_scores = np.array([float(np.dot(q_emb, v[:len(q_emb)])) for v in dense_embs_mat])
             dense_ranked = sorted(
                 enumerate(dense_scores), key=lambda x: x[1], reverse=True
             )[:15]
@@ -762,7 +795,7 @@ class RAGService:
         orig_q_emb = self.embed_texts([query], is_query=True)[0]
         mmr_indices = _mmr_select(
             candidate_indices=pool_indices,
-            embeddings=all_embeddings,
+            embeddings=dense_embs_mat,
             query_embedding=orig_q_emb,
             top_n=min(10, len(pool_indices)),
             lambda_mult=0.65,
@@ -773,8 +806,8 @@ class RAGService:
         reranked_results: list[tuple[float, float, Any]] = []
 
         for idx in mmr_indices:
-            row = rows[idx]
-            text = str(row["chunk_text"]).lower()
+            row = rows_meta[idx]
+            text = row["chunk_text"].lower()
             text_words = set(_tokenize(text))
 
             overlap = (
@@ -783,7 +816,11 @@ class RAGService:
                 else 0.0
             )
             phrase_bonus = 0.15 if query.lower() in text else 0.0
-            dense_s = float(np.dot(orig_q_emb, all_embeddings[idx]))
+            chunk_vec = dense_embs_mat[idx]
+            if len(chunk_vec) == len(orig_q_emb):
+                dense_s = float(np.dot(orig_q_emb, chunk_vec))
+            else:
+                dense_s = float(np.dot(orig_q_emb, chunk_vec[:len(orig_q_emb)]))
 
             combined = 0.60 * dense_s + 0.25 * overlap + phrase_bonus
             reranked_results.append((combined, dense_s, row))
@@ -795,12 +832,12 @@ class RAGService:
             if comb >= cutoff or (threshold is None and len(final_chunks) == 0):
                 final_chunks.append(
                     RAGChunk(
-                        id=int(r["id"]),
-                        document_id=int(r["document_id"]),
-                        document_name=str(r["document_name"]),
-                        page_number=int(r["page_number"]),
-                        chunk_index=int(r["chunk_index"]),
-                        text=str(r["chunk_text"]),
+                        id=r["id"],
+                        document_id=r["document_id"],
+                        document_name=r["document_name"],
+                        page_number=r["page_number"],
+                        chunk_index=r["chunk_index"],
+                        text=r["chunk_text"],
                         score=round(comb, 4),
                         rerank_score=round(comb, 4),
                         strategy="advanced",
@@ -817,19 +854,23 @@ class RAGService:
         selected_doc_ids: list[int] | None = None,
     ) -> tuple[str, list[RAGChunk]]:
         """3. GRAPH RAG: Entity extraction + Scored graph search + BFS expansion."""
-        graphs_file = self.graphs_dir / "extracted_graphs.pkl"
-        if not graphs_file.exists():
-            adv_chunks = self.search_advanced(query, database=database, top_k=2, threshold=threshold, selected_doc_ids=selected_doc_ids)
-            return "", adv_chunks
+        if self._cached_graphs is None:
+            graphs_file = self.graphs_dir / "extracted_graphs.pkl"
+            if not graphs_file.exists():
+                adv_chunks = self.search_advanced(query, database=database, top_k=2, threshold=threshold, selected_doc_ids=selected_doc_ids)
+                return "", adv_chunks
 
-        try:
-            with open(graphs_file, "rb") as f:
-                all_graphs = pickle.load(f)
-                if not isinstance(all_graphs, list):
-                    all_graphs = [all_graphs]
-        except Exception:
-            adv_chunks = self.search_advanced(query, database=database, top_k=2, threshold=threshold, selected_doc_ids=selected_doc_ids)
-            return "", adv_chunks
+            try:
+                with open(graphs_file, "rb") as f:
+                    all_graphs = pickle.load(f)
+                    if not isinstance(all_graphs, list):
+                        all_graphs = [all_graphs]
+                    self._cached_graphs = all_graphs
+            except Exception:
+                adv_chunks = self.search_advanced(query, database=database, top_k=2, threshold=threshold, selected_doc_ids=selected_doc_ids)
+                return "", adv_chunks
+        else:
+            all_graphs = self._cached_graphs
 
         query_tokens = _tokenize(query)
         if not query_tokens:

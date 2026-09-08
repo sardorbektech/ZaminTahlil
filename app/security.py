@@ -3,8 +3,12 @@ maxfiy ma'lumotlarni maskalash uchun yordamchi modullar."""
 
 from __future__ import annotations
 
+import collections
+import json
 import logging
 import re
+import threading
+import time
 from collections.abc import Iterable
 from typing import Any
 
@@ -67,6 +71,81 @@ class SecurityHeadersMiddleware:
             await send(message)
 
         await self.app(scope, receive, send_wrapper)
+
+
+class RateLimitMiddleware:
+    """Qimmat API operatsiyalari (/analyze, /predict-yield, /chat) uchun
+    IP bo'yicha cheklovchi xotiradagi yengil ASGI middleware."""
+
+    def __init__(
+        self,
+        app: Any,
+        max_requests_per_minute: int = 40,
+        protected_paths: tuple[str, ...] = ("/analyze", "/predict-yield", "/chat"),
+    ) -> None:
+        self.app = app
+        self.max_requests = max_requests_per_minute
+        self.protected_paths = protected_paths
+        self._history: dict[str, collections.deque[float]] = {}
+        self._lock = threading.Lock()
+
+    def _get_client_ip(self, scope: dict[str, Any]) -> str:
+        for header_name, header_value in scope.get("headers") or ():
+            if header_name == b"x-forwarded-for":
+                try:
+                    return header_value.decode("latin-1").split(",")[0].strip()
+                except Exception:
+                    pass
+        client = scope.get("client")
+        return client[0] if client else "127.0.0.1"
+
+    async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        path = scope.get("path", "")
+        if any(path.endswith(p) or f"{p}?" in path for p in self.protected_paths):
+            ip = self._get_client_ip(scope)
+            now = time.time()
+            cutoff = now - 60.0
+
+            with self._lock:
+                if len(self._history) > 3000:
+                    self._history = {
+                        k: q for k, q in self._history.items() if q and q[-1] > cutoff
+                    }
+
+                q = self._history.setdefault(ip, collections.deque())
+                while q and q[0] <= cutoff:
+                    q.popleft()
+
+                if len(q) >= self.max_requests:
+                    body = json.dumps(
+                        {"detail": "So'rovlar soni me'yordan oshdi. Iltimos, birozdan so'ng qayta urining."}
+                    ).encode("utf-8")
+                    await send(
+                        {
+                            "type": "http.response.start",
+                            "status": 429,
+                            "headers": [
+                                [b"content-type", b"application/json"],
+                                [b"retry-after", b"30"],
+                                [b"content-length", str(len(body)).encode("ascii")],
+                            ],
+                        }
+                    )
+                    await send(
+                        {
+                            "type": "http.response.body",
+                            "body": body,
+                        }
+                    )
+                    return
+
+                q.append(now)
+
+        await self.app(scope, receive, send)
 
 
 class SensitiveDataFilter(logging.Filter):

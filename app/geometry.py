@@ -39,6 +39,8 @@ def validate_polygon_geojson(geometry: dict[str, Any]) -> Polygon:
     for ring in coordinates:
         if not isinstance(ring, list) or len(ring) < 4:
             raise GeometryError("Har bir polygon halqasi kamida 4 nuqtadan iborat bo'lishi kerak")
+        if len(ring) > 500:
+            raise GeometryError("Polygon halqasi ko'pi bilan 500 ta nuqtadan iborat bo'lishi mumkin")
         parsed = [_validate_position(position) for position in ring]
         if parsed[0] != parsed[-1]:
             raise GeometryError("Polygon halqasi yopiq bo'lishi kerak")

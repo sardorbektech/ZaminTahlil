@@ -76,3 +76,44 @@ async def test_field_api_area_duplicate_and_missing_credentials(
         fields_resp = await client.get("/api/fields")
         assert fields_resp.status_code == 200
         assert len(fields_resp.json()) == 0
+
+
+@pytest.mark.asyncio
+async def test_polygon_vertex_limit(tmp_path: Path) -> None:
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        # Create a polygon with > 500 coordinates
+        huge_ring = [[68.0 + i * 0.0001, 40.0 + i * 0.0001] for i in range(505)]
+        huge_ring.append(huge_ring[0])
+        resp = await client.post(
+            "/api/fields",
+            json={
+                "geometry": {"type": "Polygon", "coordinates": [huge_ring]},
+                "crop_name": "Bug'doy",
+                "planted_on": "2025-10-15",
+                "growth_stage": "Tuplanish",
+            },
+        )
+        assert resp.status_code == 422 or resp.status_code == 400
+        assert "500" in resp.text
+
+
+@pytest.mark.asyncio
+async def test_rate_limiting_protected_paths(tmp_path: Path) -> None:
+    from app.main import create_app
+    settings = Settings(database_path=tmp_path / "rl.sqlite3", artifact_dir=tmp_path / "rlart")
+    custom_app = create_app(settings)
+    transport = httpx.ASGITransport(app=custom_app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        # Exceed 40 requests per minute on protected path /chat
+        got_429 = False
+        for _ in range(45):
+            res = await client.post(
+                "/api/fields/1/chat",
+                json={"messages": [{"role": "user", "content": "test"}]},
+            )
+            if res.status_code == 429:
+                got_429 = True
+                assert "So'rovlar soni" in res.json()["detail"]
+                break
+        assert got_429 is True
