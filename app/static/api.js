@@ -191,7 +191,16 @@
     },
 
     sendChatMessage(fieldId, payload, signal) {
-      return this.post(`/api/fields/${fieldId}/chat`, payload, signal);
+      let body = payload;
+      if (payload && payload.message && !payload.messages) {
+        body = {
+          messages: [{ role: "user", content: payload.message }],
+          rag_mode: payload.rag_mode || "advanced",
+          language: payload.language || (window.i18n ? window.i18n.getLanguage() : "uz-latn"),
+          selected_book_ids: payload.selected_book_ids || null,
+        };
+      }
+      return this.post(`/api/fields/${fieldId}/chat`, body, signal);
     },
 
     // Knowledge Base & RAG Books

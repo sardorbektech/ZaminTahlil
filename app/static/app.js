@@ -20,6 +20,8 @@
     compare: false,
     compareLayerA: "NDVI",
     compareLayerB: "NDMI",
+    compareAcqIdA: null,
+    compareAcqIdB: null,
     swipePercent: 50,
     currentView: "dashboard",
     ragMode: "advanced",
@@ -40,6 +42,9 @@
     },
     wizardDraft: null,
   };
+
+  // Expose state globally for API synchronization
+  window.state = state;
 
   // Toast Notification System
   function showToast(message, type = "success") {
@@ -108,6 +113,22 @@
     );
   }
 
+  // Update spectral layer chips state (Enabled only if acquisitions exist)
+  function updateLayerChipsState(hasAcquisitions) {
+    document.querySelectorAll(".layer-chip").forEach((chip) => {
+      chip.disabled = !hasAcquisitions;
+      if (!hasAcquisitions) {
+        chip.style.opacity = "0.4";
+        chip.style.cursor = "not-allowed";
+        chip.style.pointerEvents = "none";
+      } else {
+        chip.style.opacity = "1";
+        chip.style.cursor = "pointer";
+        chip.style.pointerEvents = "auto";
+      }
+    });
+  }
+
   // View Navigation Router
   function switchView(viewName) {
     state.currentView = viewName;
@@ -137,6 +158,8 @@
       }, 100);
     } else if (viewName === "monitoring") {
       renderMonitoringChart();
+    } else if (viewName === "yield") {
+      updateYieldFieldSelect();
     } else if (viewName === "knowledge") {
       loadKnowledgeBaseBooks();
     }
@@ -185,6 +208,12 @@
       layers: [esriWorldImagery],
     });
 
+    imageMap.on("zoomend moveend", () => {
+      if (state.compare) {
+        applySwipe();
+      }
+    });
+
     state.maps.main = imageMap;
   }
 
@@ -215,16 +244,15 @@
 
   // Apply A/B Swipe Split Clipping
   function applySwipe() {
-    const imageMap = state.maps.main;
-    if (!imageMap) return;
-
+    const divider = document.getElementById("swipe-divider-line");
     const overlayA = state.maps.rasterOverlayA;
     const overlayB = state.maps.rasterOverlayB;
 
     if (!state.compare) {
+      if (divider) divider.style.display = "none";
       if (overlayA && overlayA.getElement()) {
         overlayA.getElement().style.clipPath = "none";
-        overlayA.setOpacity(1);
+        overlayA.setOpacity(0.9);
       }
       if (overlayB) {
         overlayB.setOpacity(0);
@@ -232,24 +260,123 @@
       return;
     }
 
-    if (overlayA && overlayB) {
+    if (divider) {
+      divider.style.display = "block";
+      divider.style.left = `${state.swipePercent}%`;
+    }
+
+    const percent = state.swipePercent;
+    if (overlayA && overlayA.getElement()) {
       overlayA.setOpacity(1);
+      overlayA.getElement().style.clipPath = `polygon(0 0, ${percent}% 0, ${percent}% 100%, 0 100%)`;
+    }
+    if (overlayB && overlayB.getElement()) {
       overlayB.setOpacity(1);
-      const percent = state.swipePercent;
-      const elA = overlayA.getElement();
-      const elB = overlayB.getElement();
-      if (elA) {
-        elA.style.clipPath = `polygon(0 0, ${percent}% 0, ${percent}% 100%, 0 100%)`;
+      overlayB.getElement().style.clipPath = `polygon(${percent}% 0, 100% 0, 100% 100%, ${percent}% 100%)`;
+    }
+  }
+
+  // Update comparison date dropdowns
+  function updateCompareDateDropdowns() {
+    const dateA = document.getElementById("compare-date-a");
+    const dateB = document.getElementById("compare-date-b");
+    if (!dateA || !dateB) return;
+
+    if (!state.acquisitions || !state.acquisitions.length) {
+      dateA.innerHTML = '<option value="">\u2014</option>';
+      dateB.innerHTML = '<option value="">\u2014</option>';
+      return;
+    }
+
+    const optionsA = state.acquisitions
+      .map((acq, idx) => {
+        const d = formatDateUI(acq.acquired_at);
+        return `<option value="${acq.id}" ${idx === 0 ? "selected" : ""}>${d}</option>`;
+      })
+      .join("");
+
+    const optionsB = state.acquisitions
+      .map((acq, idx) => {
+        const d = formatDateUI(acq.acquired_at);
+        const isSel = (state.acquisitions.length > 1 && idx === 1) || (state.acquisitions.length === 1 && idx === 0);
+        return `<option value="${acq.id}" ${isSel ? "selected" : ""}>${d}</option>`;
+      })
+      .join("");
+
+    dateA.innerHTML = optionsA;
+    dateB.innerHTML = optionsB;
+  }
+
+  // Update A/B compare overlays
+  async function updateCompareOverlays() {
+    const imageMap = state.maps.main;
+    if (!imageMap || !state.maps.fieldBoundaryLayer) return;
+    const bounds = state.maps.fieldBoundaryLayer.getBounds();
+
+    if (!state.compare) {
+      if (state.maps.rasterOverlayB) {
+        imageMap.removeLayer(state.maps.rasterOverlayB);
+        state.maps.rasterOverlayB = null;
       }
-      if (elB) {
-        elB.style.clipPath = `polygon(${percent}% 0, 100% 0, 100% 100%, ${percent}% 100%)`;
+      applySwipe();
+      return;
+    }
+
+    const layerA = document.getElementById("compare-layer-a")?.value || "NDVI";
+    const dateAVal = document.getElementById("compare-date-a")?.value;
+    const acqA = state.acquisitions.find((a) => String(a.id) === String(dateAVal)) || state.selectedAcquisition;
+
+    const layerB = document.getElementById("compare-layer-b")?.value || "NDMI";
+    const dateBVal = document.getElementById("compare-date-b")?.value;
+    const acqB = state.acquisitions.find((a) => String(a.id) === String(dateBVal)) || state.acquisitions[1] || state.selectedAcquisition;
+
+    const fieldId = state.selectedField?.id;
+
+    if (acqA && fieldId) {
+      try {
+        let artsA = state.cachedArtifacts.get(acqA.id);
+        if (!artsA) {
+          artsA = await api.getArtifacts(fieldId, acqA.id);
+          state.cachedArtifacts.set(acqA.id, artsA);
+        }
+        const artA = artsA.find((a) => a.layer_name.toUpperCase() === layerA.toUpperCase()) || artsA[0];
+        if (artA) {
+          const urlA = artA.image_url || `/api/fields/${fieldId}/acquisitions/${acqA.id}/images/${artA.layer_name}`;
+          if (state.maps.rasterOverlayA) imageMap.removeLayer(state.maps.rasterOverlayA);
+          state.maps.rasterOverlayA = L.imageOverlay(urlA, bounds, { opacity: 1, interactive: false }).addTo(imageMap);
+        }
+      } catch (err) {
+        console.error("Failed to load overlay A:", err);
       }
     }
+
+    if (acqB && fieldId) {
+      try {
+        let artsB = state.cachedArtifacts.get(acqB.id);
+        if (!artsB) {
+          artsB = await api.getArtifacts(fieldId, acqB.id);
+          state.cachedArtifacts.set(acqB.id, artsB);
+        }
+        const artB = artsB.find((a) => a.layer_name.toUpperCase() === layerB.toUpperCase()) || artsB[0];
+        if (artB) {
+          const urlB = artB.image_url || `/api/fields/${fieldId}/acquisitions/${acqB.id}/images/${artB.layer_name}`;
+          if (state.maps.rasterOverlayB) imageMap.removeLayer(state.maps.rasterOverlayB);
+          state.maps.rasterOverlayB = L.imageOverlay(urlB, bounds, { opacity: 1, interactive: false }).addTo(imageMap);
+        }
+      } catch (err) {
+        console.error("Failed to load overlay B:", err);
+      }
+    }
+
+    applySwipe();
   }
 
   // Fetch & Display Satellite Layer Artifacts
   async function loadAcquisitionArtifacts(acquisition) {
-    if (!acquisition || !acquisition.id) return;
+    if (!acquisition || !acquisition.id) {
+      renderArtifactStats({});
+      return;
+    }
     state.selectedAcquisition = acquisition;
 
     try {
@@ -267,7 +394,7 @@
       }
 
       // Find active layer artifact
-      const activeLayer = state.selectedLayer;
+      const activeLayer = state.selectedLayer || "NDVI";
       const layerArtifact = artifacts.find(
         (a) => a.layer_name.toUpperCase() === activeLayer.toUpperCase()
       ) || artifacts[0];
@@ -275,13 +402,16 @@
       if (layerArtifact) {
         renderArtifactStats(layerArtifact);
         renderRasterOverlay(layerArtifact);
+      } else {
+        renderArtifactStats({});
       }
 
       // Hotspot check (Lowest NDRE point)
       renderHotspot(layerArtifact);
     } catch (err) {
       console.error("Failed to load /artifacts:", err);
-      showToast(window.i18n.t("toasts.error", { msg: err.message }), "error");
+      renderArtifactStats({});
+      showToast(window.i18n ? window.i18n.t("toasts.error", { msg: err.message }) : err.message, "error");
     }
   }
 
@@ -315,17 +445,17 @@
     const productIdEl = document.getElementById("stat-product-id");
     const versionEl = document.getElementById("stat-render-version");
 
-    if (meanEl) meanEl.textContent = artifact.mean_value != null ? Number(artifact.mean_value).toFixed(2) : "\u2014";
-    if (medianEl) medianEl.textContent = artifact.median_value != null ? Number(artifact.median_value).toFixed(2) : "\u2014";
-    if (minEl) minEl.textContent = artifact.min_value != null ? Number(artifact.min_value).toFixed(2) : "\u2014";
-    if (maxEl) maxEl.textContent = artifact.max_value != null ? Number(artifact.max_value).toFixed(2) : "\u2014";
-    
+    if (meanEl) meanEl.textContent = (artifact && artifact.mean_value != null) ? Number(artifact.mean_value).toFixed(2) : "\u2014";
+    if (medianEl) medianEl.textContent = (artifact && artifact.median_value != null) ? Number(artifact.median_value).toFixed(2) : "\u2014";
+    if (minEl) minEl.textContent = (artifact && artifact.min_value != null) ? Number(artifact.min_value).toFixed(2) : "\u2014";
+    if (maxEl) maxEl.textContent = (artifact && artifact.max_value != null) ? Number(artifact.max_value).toFixed(2) : "\u2014";
+
     // valid_pixel_count & layer_valid_pixel_count
-    const validCount = artifact.layer_valid_pixel_count ?? artifact.valid_pixel_count ?? "\u2014";
+    const validCount = (artifact && artifact.layer_valid_pixel_count) ?? (artifact && artifact.valid_pixel_count) ?? state.selectedAcquisition?.valid_pixel_count ?? "\u2014";
     if (pixelsEl) pixelsEl.textContent = typeof validCount === "number" ? validCount.toLocaleString() : validCount;
-    
-    if (productIdEl) productIdEl.textContent = artifact.product_id || state.selectedAcquisition?.product_id || "\u2014";
-    if (versionEl) versionEl.textContent = artifact.render_version || "1.0";
+
+    if (productIdEl) productIdEl.textContent = (artifact && artifact.product_id) || state.selectedAcquisition?.product_id || "\u2014";
+    if (versionEl) versionEl.textContent = (artifact && artifact.render_version) || "1.0";
   }
 
   // Hotspot Sonar Radar Marker
@@ -362,21 +492,21 @@
     }
   }
 
-  // Render Recommendation Advice Cards
+  // Render Recommendation Advice Cards (No mock data)
   function renderRecommendations(rec) {
     const container = document.getElementById("satellite-advice-container");
     if (!container) return;
 
-    if (!rec || !rec.advice) {
-      container.innerHTML = `<p style="font-size: 0.88rem; color: var(--color-text-muted);">${window.i18n.t("recommendation.noAdvice")}</p>`;
+    const redTitle = (window.i18n ? window.i18n.t("recommendation.groupRedTitle") : "") || "Qilinishi shart bo'lgan choralar";
+    const yellowTitle = (window.i18n ? window.i18n.t("recommendation.groupYellowTitle") : "") || "Nazorat va ehtiyot choralari";
+    const greenTitle = (window.i18n ? window.i18n.t("recommendation.groupGreenTitle") : "") || "Ijobiy rivojlanish jarayonlari";
+
+    if (!rec || !rec.advice || (!rec.advice.red?.length && !rec.advice.yellow?.length && !rec.advice.green?.length)) {
+      container.innerHTML = `<p style="font-size: 0.88rem; color: var(--color-text-muted); text-align: center; padding: 24px 0;">Hozircha tavsiyalar mavjud emas. Yuqoridagi "Sun'iy yo'ldoshdan tahlil qilish" tugmasini bosing.</p>`;
       return;
     }
 
     const groups = rec.advice;
-    const redTitle = window.i18n.t("recommendation.groupRedTitle") || "Qilinishi shart bo'lgan choralar";
-    const yellowTitle = window.i18n.t("recommendation.groupYellowTitle") || "Nazorat va ehtiyot choralari";
-    const greenTitle = window.i18n.t("recommendation.groupGreenTitle") || "Ijobiy rivojlanish jarayonlari";
-
     let html = "";
     if (groups.red && groups.red.length) {
       html += `
@@ -405,7 +535,22 @@
       `;
     }
 
-    container.innerHTML = html || `<p style="font-size: 0.88rem; color: var(--color-text-muted);">${window.i18n.t("recommendation.noAdvice")}</p>`;
+    container.innerHTML = html;
+  }
+
+  // Update yield view field dropdown options
+  function updateYieldFieldSelect() {
+    const select = document.getElementById("yield-field-select");
+    if (!select) return;
+    const currentVal = state.selectedField ? String(state.selectedField.id) : "";
+    const options = state.fields
+      .map(
+        (f) =>
+          `<option value="${f.id}" ${String(f.id) === currentVal ? "selected" : ""}>${f.crop_name} (${f.area_hectares} ha)</option>`
+      )
+      .join("");
+    select.innerHTML = '<option value="">-- Dalani tanlang --</option>' + options;
+    select.value = currentVal;
   }
 
   // Select Field Handler
@@ -426,6 +571,9 @@
     if (ctxCrop) ctxCrop.textContent = field.crop_name;
     if (ctxArea) ctxArea.textContent = `${field.area_hectares} ha`;
 
+    // Sync Yield view selector
+    updateYieldFieldSelect();
+
     // Draw field boundary on main map
     drawFieldBoundary(field.geometry);
 
@@ -435,22 +583,33 @@
       const deduped = deduplicateAcquisitionsByDay(rawAcqs);
       state.acquisitions = deduped;
 
+      updateLayerChipsState(deduped.length > 0);
       renderAcquisitionsList(deduped);
+      updateCompareDateDropdowns();
+
       if (deduped.length > 0) {
         await loadAcquisitionArtifacts(deduped[0]);
       } else {
         renderArtifactStats({});
       }
 
-      // Load Recommendations
-      const rec = await api.getRecommendation(field.id);
-      renderRecommendations(rec);
+      // Load Recommendations cleanly
+      try {
+        const rec = await api.getRecommendation(field.id);
+        renderRecommendations(rec);
+      } catch {
+        renderRecommendations(null);
+      }
 
       // Pre-fill Yield Form
       const cropInput = document.getElementById("yield-crop-select");
       const plantedInput = document.getElementById("yield-planting-date");
       if (cropInput && field.crop_name) {
-        cropInput.value = field.crop_name.toLowerCase().includes("bug'doy") || field.crop_name.toLowerCase().includes("wheat") ? "wheat" : "cotton";
+        cropInput.value =
+          field.crop_name.toLowerCase().includes("bug'doy") ||
+          field.crop_name.toLowerCase().includes("wheat")
+            ? "wheat"
+            : "cotton";
       }
       if (plantedInput && field.planted_on) {
         plantedInput.value = field.planted_on;
@@ -471,7 +630,7 @@
     if (!container) return;
 
     if (!acquisitions || !acquisitions.length) {
-      container.innerHTML = `<p style="font-size: 0.85rem; color: var(--color-text-muted);">${window.i18n.t("satellite.noAcquisitions")}</p>`;
+      container.innerHTML = `<p style="font-size: 0.85rem; color: var(--color-text-muted);">${window.i18n ? window.i18n.t("satellite.noAcquisitions") : "Tahlillar mavjud emas"}</p>`;
       return;
     }
 
@@ -522,13 +681,14 @@
 
       renderFieldsList(fields);
       renderDashboardRecent(fields);
+      updateYieldFieldSelect();
 
       if (fields.length > 0 && !state.selectedField) {
         selectField(fields[0]);
       }
     } catch (err) {
       console.error("Failed to load fields:", err);
-      showToast(window.i18n.t("toasts.error", { msg: err.message }), "error");
+      showToast(window.i18n ? window.i18n.t("toasts.error", { msg: err.message }) : err.message, "error");
     }
   }
 
@@ -540,8 +700,8 @@
     if (!fields || !fields.length) {
       container.innerHTML = `
         <div style="grid-column: 1 / -1; text-align: center; padding: 40px;">
-          <h3>${window.i18n.t("fields.emptyTitle")}</h3>
-          <p style="color: var(--color-text-muted); margin-top: 8px;">${window.i18n.t("fields.emptyDesc")}</p>
+          <h3>${window.i18n ? window.i18n.t("fields.emptyTitle") : "Dalalar yo'q"}</h3>
+          <p style="color: var(--color-text-muted); margin-top: 8px;">${window.i18n ? window.i18n.t("fields.emptyDesc") : ""}</p>
         </div>
       `;
       return;
@@ -599,7 +759,7 @@
     if (!container) return;
 
     if (!fields || !fields.length) {
-      container.innerHTML = `<p style="padding: 20px; color: var(--color-text-muted);">${window.i18n.t("dashboard.noFieldsYet")}</p>`;
+      container.innerHTML = `<p style="padding: 20px; color: var(--color-text-muted);">${window.i18n ? window.i18n.t("dashboard.noFieldsYet") : "Hozircha dalalar mavjud emas"}</p>`;
       return;
     }
 
@@ -619,17 +779,44 @@
       .join("");
   }
 
-  // Render Monitoring Chart with Points
+  // Synchronize metric checkboxes with Chart datasets
+  function syncChartCheckboxes() {
+    const map = [
+      { id: "chk-metric-ndvi", index: 0 },
+      { id: "chk-metric-ndmi", index: 1 },
+      { id: "chk-metric-ndre", index: 2 },
+      { id: "chk-metric-evi", index: 3 },
+      { id: "chk-metric-bsi", index: 4 },
+    ];
+    map.forEach(({ id, index }) => {
+      const chk = document.getElementById(id);
+      if (chk && state.charts.monitoring && state.charts.monitoring.data.datasets[index]) {
+        state.charts.monitoring.setDatasetVisibility(index, chk.checked);
+      }
+    });
+    if (state.charts.monitoring) {
+      state.charts.monitoring.update();
+    }
+  }
+
+  // Render Monitoring Chart with Continuous Lines & Fixed [-1.0, 1.0] Range
   function renderMonitoringChartData(points) {
     const chartEl = document.getElementById("monitoring-history-chart");
     if (!chartEl || !points) return;
 
-    const labels = points.map((p) => formatChartDate(p.acquired_at || p.date));
-    const ndviVals = points.map((p) => p.values?.["NDVI"] ?? p.ndvi ?? null);
-    const ndmiVals = points.map((p) => p.values?.["NDMI"] ?? p.ndmi ?? null);
-    const ndreVals = points.map((p) => p.values?.["NDRE"] ?? p.ndre ?? null);
-    const eviVals = points.map((p) => p.values?.["EVI"] ?? p.evi ?? null);
-    const bsiVals = points.map((p) => p.values?.["BSI"] ?? p.bsi ?? null);
+    // Sort points chronologically
+    const sorted = [...points].sort((a, b) => {
+      const tA = Date.parse(a.acquired_at || a.date || 0);
+      const tB = Date.parse(b.acquired_at || b.date || 0);
+      return tA - tB;
+    });
+
+    const labels = sorted.map((p) => formatChartDate(p.acquired_at || p.date));
+    const ndviVals = sorted.map((p) => p.values?.["NDVI"] ?? p.ndvi ?? null);
+    const ndmiVals = sorted.map((p) => p.values?.["NDMI"] ?? p.ndmi ?? null);
+    const ndreVals = sorted.map((p) => p.values?.["NDRE"] ?? p.ndre ?? null);
+    const eviVals = sorted.map((p) => p.values?.["EVI"] ?? p.evi ?? null);
+    const bsiVals = sorted.map((p) => p.values?.["BSI"] ?? p.bsi ?? null);
 
     if (state.charts.monitoring) {
       state.charts.monitoring.destroy();
@@ -646,7 +833,11 @@
             borderColor: "#16a34a",
             backgroundColor: "rgba(22, 163, 74, 0.1)",
             borderWidth: 2,
-            tension: 0.3,
+            tension: 0.25,
+            spanGaps: true,
+            pointRadius: 3.5,
+            pointHoverRadius: 6,
+            fill: false,
           },
           {
             label: "NDMI",
@@ -654,7 +845,11 @@
             borderColor: "#2563eb",
             backgroundColor: "rgba(37, 99, 235, 0.1)",
             borderWidth: 2,
-            tension: 0.3,
+            tension: 0.25,
+            spanGaps: true,
+            pointRadius: 3.5,
+            pointHoverRadius: 6,
+            fill: false,
           },
           {
             label: "NDRE",
@@ -662,7 +857,11 @@
             borderColor: "#d97706",
             backgroundColor: "rgba(217, 119, 6, 0.1)",
             borderWidth: 2,
-            tension: 0.3,
+            tension: 0.25,
+            spanGaps: true,
+            pointRadius: 3.5,
+            pointHoverRadius: 6,
+            fill: false,
           },
           {
             label: "EVI",
@@ -670,7 +869,11 @@
             borderColor: "#059669",
             backgroundColor: "rgba(5, 150, 105, 0.1)",
             borderWidth: 2,
-            tension: 0.3,
+            tension: 0.25,
+            spanGaps: true,
+            pointRadius: 3.5,
+            pointHoverRadius: 6,
+            fill: false,
           },
           {
             label: "BSI",
@@ -678,7 +881,11 @@
             borderColor: "#dc2626",
             backgroundColor: "rgba(220, 38, 38, 0.1)",
             borderWidth: 2,
-            tension: 0.3,
+            tension: 0.25,
+            spanGaps: true,
+            pointRadius: 3.5,
+            pointHoverRadius: 6,
+            fill: false,
           },
         ],
       },
@@ -695,20 +902,25 @@
             ticks: {
               maxRotation: 0,
               autoSkip: true,
-              maxTicksLimit: 10,
+              maxTicksLimit: 12,
             },
           },
           y: {
-            min: -0.2,
+            min: -1.0,
             max: 1.0,
+            ticks: {
+              stepSize: 0.2,
+            },
             title: {
               display: true,
-              text: "Indeks Qiymati",
+              text: "Indeks Qiymati (-1.0 dan +1.0 gacha)",
             },
           },
         },
       },
     });
+
+    syncChartCheckboxes();
   }
 
   // Monitoring Historical Chart.js Renderer
@@ -717,7 +929,9 @@
     try {
       // Endpoint: /annual-metrics with Date.parse
       const annualData = await api.getAnnualMetrics(state.selectedField.id);
-      const points = annualData?.points || (Array.isArray(annualData?.series) ? annualData.series : (annualData?.series?.points || []));
+      const points =
+        annualData?.points ||
+        (Array.isArray(annualData?.series) ? annualData.series : annualData?.series?.points || []);
       renderMonitoringChartData(points);
     } catch (err) {
       console.error("Failed to render monitoring chart:", err);
@@ -736,12 +950,13 @@
       showToast("Tarixiy ma'lumotlar yuklanmoqda...", "info");
       // Endpoint: /historical-metrics with from_date
       const res = await api.getHistoricalMetrics(state.selectedField.id, from_date, to_date);
-      const points = res?.series?.points || (Array.isArray(res?.series) ? res.series : (res?.points || []));
+      const points =
+        res?.series?.points || (Array.isArray(res?.series) ? res.series : res?.points || []);
       if (points && points.length) {
         showToast(`${points.length} ta kuzatuv yuklandi`, "success");
         renderMonitoringChartData(points);
       } else {
-        showToast(window.i18n.t("monitoring.noData") || "Ma'lumot topilmadi", "info");
+        showToast(window.i18n ? window.i18n.t("monitoring.noData") : "Ma'lumot topilmadi", "info");
       }
     } catch (err) {
       console.error("Failed to load /historical-metrics:", err);
@@ -770,7 +985,26 @@
 
   // Yield Prediction Handler
   async function handlePredictYield() {
-    if (!state.selectedField) return;
+    let field = state.selectedField;
+    const yieldFieldSelect = document.getElementById("yield-field-select");
+    if (!field && yieldFieldSelect?.value) {
+      field = state.fields.find((f) => String(f.id) === yieldFieldSelect.value);
+      if (field) selectField(field);
+    }
+
+    if (!field) {
+      showToast("Avval dalani tanlang!", "error");
+      return;
+    }
+
+    const btn = document.getElementById("btn-run-yield-predict");
+    const origHtml = btn ? btn.innerHTML : "";
+    if (btn) {
+      btn.disabled = true;
+      btn.style.opacity = "0.7";
+      btn.style.cursor = "not-allowed";
+      btn.innerHTML = `<span>\u23f3</span> <span>Hisoblanmoqda...</span>`;
+    }
 
     const modelSelect = document.getElementById("yield-model-select");
     const cropSelect = document.getElementById("yield-crop-select");
@@ -786,12 +1020,19 @@
 
     try {
       showToast("Hosil bashorati hisoblanmoqda...", "info");
-      const res = await api.predictYield(state.selectedField.id, payload);
+      const res = await api.predictYield(field.id, payload);
       renderYieldResults(res);
-      showToast(window.i18n.t("toasts.yieldReady"), "success");
+      showToast(window.i18n ? window.i18n.t("toasts.yieldReady") : "Hosil bashorati tayyor!", "success");
     } catch (err) {
       console.error("Yield prediction failed:", err);
       showToast(err.message, "error");
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.style.opacity = "1";
+        btn.style.cursor = "pointer";
+        btn.innerHTML = origHtml;
+      }
     }
   }
 
@@ -818,7 +1059,8 @@
     const avgYieldDash = document.getElementById("dash-avg-yield");
 
     if (valEl) valEl.textContent = `${data.predicted_yield_t_ha} t/ga`;
-    if (intervalEl) intervalEl.textContent = `Ishonch oralig'i: ${data.yield_min_expected} \u2014 ${data.yield_max_expected} t/ga`;
+    if (intervalEl)
+      intervalEl.textContent = `Ishonch oralig'i: ${data.yield_min_expected} \u2014 ${data.yield_max_expected} t/ga`;
     if (totalEl) totalEl.textContent = `${data.total_expected_yield_tons} tonna`;
     if (areaEl) areaEl.textContent = `Maydon: ${data.field_area_ha} ha (${data.crop_display_name})`;
     if (avgYieldDash) avgYieldDash.textContent = `${data.predicted_yield_t_ha} t/ga`;
@@ -944,7 +1186,7 @@
     try {
       const messages = await api.getChatHistory(fieldId);
       if (!messages || !messages.length) {
-        feed.innerHTML = `<p style="text-align: center; color: var(--color-text-muted); margin-top: 40px;">${window.i18n.t("chat.noMessages")}</p>`;
+        feed.innerHTML = `<p style="text-align: center; color: var(--color-text-muted); margin-top: 40px;">${window.i18n ? window.i18n.t("chat.noMessages") : "Xabarlar yo'q"}</p>`;
         return;
       }
 
@@ -990,7 +1232,7 @@
           </span>
         `;
       } else {
-        summaryBox.innerHTML = `<p style="color: var(--color-text-muted);">${window.i18n.t("chat.noSummary")}</p>`;
+        summaryBox.innerHTML = `<p style="color: var(--color-text-muted);">${window.i18n ? window.i18n.t("chat.noSummary") : "Xulosa mavjud emas"}</p>`;
       }
     } catch (err) {
       console.error("Failed to load chat summary:", err);
@@ -1006,10 +1248,19 @@
 
     const input = document.getElementById("chat-message-input");
     const feed = document.getElementById("chat-messages-feed");
+    const sendBtn = document.getElementById("btn-chat-send");
     const text = input?.value?.trim();
     if (!text) return;
 
     input.value = "";
+    if (sendBtn) {
+      sendBtn.disabled = true;
+      sendBtn.style.opacity = "0.6";
+      sendBtn.style.cursor = "not-allowed";
+    }
+    if (input) {
+      input.disabled = true;
+    }
 
     // Append User Bubble Optimistically
     const userBubble = document.createElement("div");
@@ -1021,35 +1272,41 @@
     // Append AI Thinking Indicator
     const thinkingBubble = document.createElement("div");
     thinkingBubble.className = "chat-bubble ai";
-    thinkingBubble.innerHTML = `<div class="bubble-content"><em>${window.i18n.t("chat.thinking")}</em></div>`;
+    thinkingBubble.innerHTML = `<div class="bubble-content"><em>${window.i18n ? window.i18n.t("chat.thinking") : "AI javob tayyorlamoqda..."}</em></div>`;
     feed.appendChild(thinkingBubble);
     feed.scrollTop = feed.scrollHeight;
 
     try {
       const ragMode = document.getElementById("chat-rag-mode-select")?.value || "advanced";
+      const lang = window.i18n ? window.i18n.getLanguage() : "uz-latn";
       const res = await api.sendChatMessage(state.selectedField.id, {
+        messages: [{ role: "user", content: text }],
         message: text,
         rag_mode: ragMode,
+        language: lang,
       });
 
       thinkingBubble.remove();
 
       const aiBubble = document.createElement("div");
       aiBubble.className = "chat-bubble ai";
+      const answerText = res.answer || res.reply || "Javob olindi";
       const safeHtml = window.DOMPurify
-        ? window.DOMPurify.sanitize(window.marked.parse(res.reply))
-        : res.reply;
+        ? window.DOMPurify.sanitize(window.marked.parse(answerText))
+        : answerText;
 
-      const sourcesCount = res.sources ? res.sources.length : 0;
+      const sourcesList = res.rag_sources || res.sources || [];
+      const sourcesCount = sourcesList.length;
       const sourcesBtn =
         sourcesCount > 0
-          ? `<button class="btn-sources-drawer" data-sources='${JSON.stringify(res.sources).replace(/'/g, "&apos;")}' type="button">\ud83d\udcda Manbalar (${sourcesCount})</button>`
+          ? `<button class="btn-sources-drawer" data-sources='${JSON.stringify(sourcesList).replace(/'/g, "&apos;")}' type="button">\ud83d\udcda Manbalar (${sourcesCount})</button>`
           : "";
 
+      const modeBadge = res.rag_strategy || res.rag_mode || ragMode;
       aiBubble.innerHTML = `
         <div class="bubble-content">${safeHtml}</div>
         <div class="bubble-meta">
-          <span class="rag-badge ${res.rag_mode}">\ud83d\udd2c ${res.rag_mode.toUpperCase()}</span>
+          <span class="rag-badge ${modeBadge}">\ud83d\udd2c ${modeBadge.toUpperCase()}</span>
           ${sourcesBtn}
         </div>
       `;
@@ -1068,7 +1325,21 @@
       loadChatSummary(state.selectedField.id);
     } catch (err) {
       thinkingBubble.remove();
-      showToast(err.message, "error");
+      const errorMsg =
+        err.status === 409
+          ? "AI maslahatchidan foydalanish uchun avval 'Sun'iy yo'ldosh' bo'limida tahlilni bajaring."
+          : err.message;
+      showToast(errorMsg, "error");
+    } finally {
+      if (sendBtn) {
+        sendBtn.disabled = false;
+        sendBtn.style.opacity = "1";
+        sendBtn.style.cursor = "pointer";
+      }
+      if (input) {
+        input.disabled = false;
+        input.focus();
+      }
     }
   }
 
@@ -1110,7 +1381,7 @@
       if (indexedCountEl) indexedCountEl.textContent = `Indekslangan: ${books.length}`;
 
       if (!books.length) {
-        grid.innerHTML = `<p style="color: var(--color-text-muted);">${window.i18n.t("knowledge.emptyBooks")}</p>`;
+        grid.innerHTML = `<p style="color: var(--color-text-muted);">${window.i18n ? window.i18n.t("knowledge.emptyBooks") : "Kitoblar yo'q"}</p>`;
         return;
       }
 
@@ -1144,7 +1415,7 @@
           const isActive = toggle.checked;
           try {
             await api.toggleRagBook(bookId, isActive);
-            showToast(window.i18n.t("toasts.bookToggled"), "success");
+            showToast(window.i18n ? window.i18n.t("toasts.bookToggled") : "Kitob yangilandi", "success");
             loadKnowledgeBaseBooks();
           } catch (err) {
             toggle.checked = !isActive;
@@ -1218,7 +1489,9 @@
         drawnItems.clearLayers();
         drawnItems.addLayer(e.layer);
         state.wizardDraft = e.layer.toGeoJSON().geometry;
-        const areaHa = (L.GeometryUtil ? L.GeometryUtil.geodesicArea(e.layer.getLatLngs()[0]) / 10000 : 1.5).toFixed(2);
+        const areaHa = (
+          L.GeometryUtil ? L.GeometryUtil.geodesicArea(e.layer.getLatLngs()[0]) / 10000 : 1.5
+        ).toFixed(2);
         const areaDisp = document.getElementById("wizard-area-display");
         if (areaDisp) areaDisp.textContent = `Hisoblangan maydon: ~${areaHa} ha (WGS84)`;
       });
@@ -1258,7 +1531,7 @@
     document.getElementById("btn-wizard-next")?.addEventListener("click", () => {
       if (step === 1) {
         if (!state.wizardDraft) {
-          showToast(window.i18n.t("wizard.errorNoPolygon"), "error");
+          showToast(window.i18n ? window.i18n.t("wizard.errorNoPolygon") : "Chegarani chizing", "error");
           return;
         }
         step = 2;
@@ -1303,16 +1576,16 @@
       };
 
       try {
-        showToast(window.i18n.t("wizard.saving"), "info");
+        showToast(window.i18n ? window.i18n.t("wizard.saving") : "Saqlanmoqda...", "info");
         const newField = await api.createField(payload);
-        showToast(window.i18n.t("wizard.savedSuccess"), "success");
+        showToast(window.i18n ? window.i18n.t("wizard.savedSuccess") : "Dala saqlandi!", "success");
         modal.classList.remove("open");
         await loadFields();
         selectField(newField);
         switchView("satellite");
       } catch (err) {
         if (err.status === 409) {
-          showToast(window.i18n.t("wizard.errorDuplicate"), "error");
+          showToast(window.i18n ? window.i18n.t("wizard.errorDuplicate") : "Dublikat dala", "error");
         } else {
           showToast(err.message, "error");
         }
@@ -1340,13 +1613,13 @@
     confirmBtn?.addEventListener("click", async () => {
       const val = input?.value?.trim().toLowerCase();
       if (val !== "roziman") {
-        showToast(window.i18n.t("settings.purgeError"), "error");
+        showToast(window.i18n ? window.i18n.t("settings.purgeError") : "Xato parol", "error");
         return;
       }
 
       try {
         await api.purgeFields("roziman");
-        showToast(window.i18n.t("settings.purgeSuccess"), "success");
+        showToast(window.i18n ? window.i18n.t("settings.purgeSuccess") : "Baza tozalandi", "success");
         modal.classList.remove("open");
         state.selectedField = null;
         state.fields = [];
@@ -1399,6 +1672,7 @@
     // Layer Selector Chips on Map
     document.querySelectorAll(".layer-chip").forEach((chip) => {
       chip.addEventListener("click", () => {
+        if (chip.disabled || !state.acquisitions.length) return;
         document.querySelectorAll(".layer-chip").forEach((c) => c.classList.remove("active"));
         chip.classList.add("active");
         state.selectedLayer = chip.getAttribute("data-layer");
@@ -1410,7 +1684,7 @@
       });
     });
 
-    // A/B Compare Toggle & Range
+    // A/B Compare Toggle & Range & Inputs
     const compareToggle = document.getElementById("compare-toggle");
     const swipeBox = document.getElementById("swipe-slider-box");
     const swipeRange = document.getElementById("swipe-range");
@@ -1418,7 +1692,15 @@
     compareToggle?.addEventListener("change", () => {
       state.compare = compareToggle.checked;
       if (swipeBox) swipeBox.style.display = state.compare ? "flex" : "none";
-      applySwipe();
+      if (state.compare) {
+        updateCompareDateDropdowns();
+        updateCompareOverlays();
+      } else {
+        applySwipe();
+        if (state.selectedAcquisition) {
+          loadAcquisitionArtifacts(state.selectedAcquisition);
+        }
+      }
     });
 
     swipeRange?.addEventListener("input", () => {
@@ -1426,20 +1708,48 @@
       applySwipe();
     });
 
-    // Run Satellite Analysis
+    document.getElementById("compare-layer-a")?.addEventListener("change", () => {
+      if (state.compare) updateCompareOverlays();
+    });
+    document.getElementById("compare-date-a")?.addEventListener("change", () => {
+      if (state.compare) updateCompareOverlays();
+    });
+    document.getElementById("compare-layer-b")?.addEventListener("change", () => {
+      if (state.compare) updateCompareOverlays();
+    });
+    document.getElementById("compare-date-b")?.addEventListener("change", () => {
+      if (state.compare) updateCompareOverlays();
+    });
+
+    // Run Satellite Analysis (with Loading state & Button disabling)
     document.getElementById("btn-run-analysis")?.addEventListener("click", async () => {
       if (!state.selectedField) {
         showToast("Avval dala tanlang!", "error");
         return;
       }
+      const btn = document.getElementById("btn-run-analysis");
+      const origHtml = btn ? btn.innerHTML : "";
+      if (btn) {
+        btn.disabled = true;
+        btn.style.opacity = "0.7";
+        btn.style.cursor = "not-allowed";
+        btn.innerHTML = `<span>\u23f3</span> <span>${window.i18n ? window.i18n.t("satellite.btnAnalyzing") : "Sentinel-2 tahlil qilinmoqda..."}</span>`;
+      }
       const mode = document.getElementById("select-analysis-mode")?.value || "latest";
       try {
-        showToast(window.i18n.t("satellite.btnAnalyzing"), "info");
+        showToast(window.i18n ? window.i18n.t("satellite.btnAnalyzing") : "Tahlil boshlandi...", "info");
         await api.analyzeField(state.selectedField.id, mode);
-        showToast(window.i18n.t("toasts.analysisDone"), "success");
-        selectField(state.selectedField);
+        showToast(window.i18n ? window.i18n.t("toasts.analysisDone") : "Tahlil muvaffaqiyatli yakunlandi!", "success");
+        await selectField(state.selectedField);
       } catch (err) {
         showToast(err.message, "error");
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.style.opacity = "1";
+          btn.style.cursor = "pointer";
+          btn.innerHTML = origHtml;
+        }
       }
     });
 
@@ -1451,6 +1761,20 @@
     document.getElementById("btn-range-90d")?.addEventListener("click", () => setDateRangePreset(90));
     document.getElementById("btn-range-season")?.addEventListener("click", () => setDateRangePreset("season"));
     document.getElementById("btn-range-year")?.addEventListener("click", () => setDateRangePreset("year"));
+
+    // Metric index visibility checkboxes
+    ["chk-metric-ndvi", "chk-metric-ndmi", "chk-metric-ndre", "chk-metric-evi", "chk-metric-bsi"].forEach((id) => {
+      document.getElementById(id)?.addEventListener("change", syncChartCheckboxes);
+    });
+
+    // Yield Prediction Form Field Selector synchronization
+    document.getElementById("yield-field-select")?.addEventListener("change", (e) => {
+      const fieldId = parseInt(e.target.value, 10);
+      const target = state.fields.find((f) => f.id === fieldId);
+      if (target) {
+        selectField(target);
+      }
+    });
 
     // Yield Prediction Button
     document.getElementById("btn-run-yield-predict")?.addEventListener("click", () => {
@@ -1482,6 +1806,7 @@
     initEventListeners();
     initFieldWizard();
     initPurgeSystem();
+    updateLayerChipsState(false);
     await loadFields();
   }
 
