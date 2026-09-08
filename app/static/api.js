@@ -141,20 +141,27 @@
       return this.get(`/api/fields/${fieldId}/acquisitions`, null, signal);
     },
 
-    getArtifacts(acquisitionId, signal) {
-      return this.get(`/api/acquisitions/${acquisitionId}/artifacts`, null, signal);
+    getArtifacts(fieldIdOrAcq, acquisitionId = null, signal = null) {
+      let fieldId = fieldIdOrAcq;
+      let acqId = acquisitionId;
+      if (typeof fieldIdOrAcq === "object" && fieldIdOrAcq !== null) {
+        fieldId = fieldIdOrAcq.field_id;
+        acqId = fieldIdOrAcq.id;
+      } else if (acqId === null) {
+        acqId = fieldIdOrAcq;
+        fieldId = window.state?.selectedField?.id;
+      }
+      return this.get(`/api/fields/${fieldId}/acquisitions/${acqId}/artifacts`, null, signal);
     },
 
-    getAnnualMetrics(fieldId, year = null, signal) {
-      const params = year ? { year } : null;
-      return this.get(`/api/fields/${fieldId}/annual-metrics`, params, signal);
+    getAnnualMetrics(fieldId, year = null, signal = null) {
+      const selectedYear = year || new Date().getFullYear();
+      return this.get(`/api/fields/${fieldId}/annual-metrics`, { year: selectedYear }, signal);
     },
 
-    getHistoricalMetrics(fieldId, fromDate = null, toDate = null, signal) {
-      const params = {};
-      if (fromDate) params.from_date = fromDate;
-      if (toDate) params.to_date = toDate;
-      return this.get(`/api/fields/${fieldId}/historical-metrics`, params, signal);
+    getHistoricalMetrics(fieldId, fromDate = null, toDate = null, signal = null) {
+      const from_date = fromDate || `${new Date().getFullYear()}-01-01`;
+      return this.post(`/api/fields/${fieldId}/historical-metrics`, { from_date }, signal);
     },
 
     getRecommendation(fieldId, signal) {

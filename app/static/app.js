@@ -255,7 +255,9 @@
     try {
       let artifacts = state.cachedArtifacts.get(acquisition.id);
       if (!artifacts) {
-        artifacts = await api.getArtifacts(acquisition.id);
+        // Endpoint: /artifacts
+        const fieldId = acquisition.field_id || (state.selectedField && state.selectedField.id);
+        artifacts = await api.getArtifacts(fieldId, acquisition.id);
         state.cachedArtifacts.set(acquisition.id, artifacts);
       }
 
@@ -617,101 +619,106 @@
       .join("");
   }
 
+  // Render Monitoring Chart with Points
+  function renderMonitoringChartData(points) {
+    const chartEl = document.getElementById("monitoring-history-chart");
+    if (!chartEl || !points) return;
+
+    const labels = points.map((p) => formatChartDate(p.acquired_at || p.date));
+    const ndviVals = points.map((p) => p.values?.["NDVI"] ?? p.ndvi ?? null);
+    const ndmiVals = points.map((p) => p.values?.["NDMI"] ?? p.ndmi ?? null);
+    const ndreVals = points.map((p) => p.values?.["NDRE"] ?? p.ndre ?? null);
+    const eviVals = points.map((p) => p.values?.["EVI"] ?? p.evi ?? null);
+    const bsiVals = points.map((p) => p.values?.["BSI"] ?? p.bsi ?? null);
+
+    if (state.charts.monitoring) {
+      state.charts.monitoring.destroy();
+    }
+
+    state.charts.monitoring = new Chart(chartEl, {
+      type: "line",
+      data: {
+        labels,
+        datasets: [
+          {
+            label: "NDVI",
+            data: ndviVals,
+            borderColor: "#16a34a",
+            backgroundColor: "rgba(22, 163, 74, 0.1)",
+            borderWidth: 2,
+            tension: 0.3,
+          },
+          {
+            label: "NDMI",
+            data: ndmiVals,
+            borderColor: "#2563eb",
+            backgroundColor: "rgba(37, 99, 235, 0.1)",
+            borderWidth: 2,
+            tension: 0.3,
+          },
+          {
+            label: "NDRE",
+            data: ndreVals,
+            borderColor: "#d97706",
+            backgroundColor: "rgba(217, 119, 6, 0.1)",
+            borderWidth: 2,
+            tension: 0.3,
+          },
+          {
+            label: "EVI",
+            data: eviVals,
+            borderColor: "#059669",
+            backgroundColor: "rgba(5, 150, 105, 0.1)",
+            borderWidth: 2,
+            tension: 0.3,
+          },
+          {
+            label: "BSI",
+            data: bsiVals,
+            borderColor: "#dc2626",
+            backgroundColor: "rgba(220, 38, 38, 0.1)",
+            borderWidth: 2,
+            tension: 0.3,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: {
+          mode: "index",
+          intersect: false,
+        },
+        scales: {
+          x: {
+            grid: { display: false },
+            ticks: {
+              maxRotation: 0,
+              autoSkip: true,
+              maxTicksLimit: 10,
+            },
+          },
+          y: {
+            min: -0.2,
+            max: 1.0,
+            title: {
+              display: true,
+              text: "Indeks Qiymati",
+            },
+          },
+        },
+      },
+    });
+  }
+
   // Monitoring Historical Chart.js Renderer
   async function renderMonitoringChart() {
-    const chartEl = document.getElementById("monitoring-history-chart");
-    if (!chartEl || !state.selectedField) return;
-
+    if (!state.selectedField) return;
     try {
       // Endpoint: /annual-metrics with Date.parse
       const annualData = await api.getAnnualMetrics(state.selectedField.id);
-      const points = annualData?.series || [];
-
-      const labels = points.map((p) => formatChartDate(p.date));
-      const ndviVals = points.map((p) => p.ndvi);
-      const ndmiVals = points.map((p) => p.ndmi);
-      const ndreVals = points.map((p) => p.ndre);
-      const eviVals = points.map((p) => p.evi);
-      const bsiVals = points.map((p) => p.bsi);
-
-      if (state.charts.monitoring) {
-        state.charts.monitoring.destroy();
-      }
-
-      state.charts.monitoring = new Chart(chartEl, {
-        type: "line",
-        data: {
-          labels,
-          datasets: [
-            {
-              label: "NDVI",
-              data: ndviVals,
-              borderColor: "#16a34a",
-              backgroundColor: "rgba(22, 163, 74, 0.1)",
-              borderWidth: 2,
-              tension: 0.3,
-            },
-            {
-              label: "NDMI",
-              data: ndmiVals,
-              borderColor: "#2563eb",
-              backgroundColor: "rgba(37, 99, 235, 0.1)",
-              borderWidth: 2,
-              tension: 0.3,
-            },
-            {
-              label: "NDRE",
-              data: ndreVals,
-              borderColor: "#d97706",
-              backgroundColor: "rgba(217, 119, 6, 0.1)",
-              borderWidth: 2,
-              tension: 0.3,
-            },
-            {
-              label: "EVI",
-              data: eviVals,
-              borderColor: "#059669",
-              backgroundColor: "rgba(5, 150, 105, 0.1)",
-              borderWidth: 2,
-              tension: 0.3,
-            },
-            {
-              label: "BSI",
-              data: bsiVals,
-              borderColor: "#dc2626",
-              backgroundColor: "rgba(220, 38, 38, 0.1)",
-              borderWidth: 2,
-              tension: 0.3,
-            },
-          ],
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          interaction: {
-            mode: "index",
-            intersect: false,
-          },
-          scales: {
-            x: {
-              grid: { display: false },
-              ticks: {
-                maxRotation: 0,
-                autoSkip: true,
-                maxTicksLimit: 10,
-              },
-            },
-            y: {
-              min: -0.2,
-              max: 1.0,
-              title: {
-                display: true,
-                text: "Indeks Qiymati",
-              },
-            },
-          },
-        },
-      });
+      const points = annualData?.points || (Array.isArray(annualData?.series) ? annualData.series : (annualData?.series?.points || []));
+      renderMonitoringChartData(points);
     } catch (err) {
       console.error("Failed to render monitoring chart:", err);
     }
@@ -722,20 +729,43 @@
     if (!state.selectedField) return;
     const fromInput = document.getElementById("chartFromDate");
     const toInput = document.getElementById("chartToDate");
-    const from_date = fromInput?.value || null;
+    const from_date = fromInput?.value || `${new Date().getFullYear()}-01-01`;
     const to_date = toInput?.value || null;
 
     try {
       showToast("Tarixiy ma'lumotlar yuklanmoqda...", "info");
+      // Endpoint: /historical-metrics with from_date
       const res = await api.getHistoricalMetrics(state.selectedField.id, from_date, to_date);
-      if (res && res.series) {
-        showToast(`${res.series.length} ta kuzatuv yuklandi`, "success");
-        renderMonitoringChart();
+      const points = res?.series?.points || (Array.isArray(res?.series) ? res.series : (res?.points || []));
+      if (points && points.length) {
+        showToast(`${points.length} ta kuzatuv yuklandi`, "success");
+        renderMonitoringChartData(points);
+      } else {
+        showToast(window.i18n.t("monitoring.noData") || "Ma'lumot topilmadi", "info");
       }
     } catch (err) {
       console.error("Failed to load /historical-metrics:", err);
       showToast(err.message, "error");
     }
+  }
+
+  function setDateRangePreset(days) {
+    const toDate = new Date();
+    const fromDate = new Date();
+    if (days === "season") {
+      fromDate.setMonth(2, 1);
+    } else if (days === "year") {
+      fromDate.setMonth(0, 1);
+    } else {
+      fromDate.setDate(toDate.getDate() - days);
+    }
+
+    const fromInput = document.getElementById("chartFromDate");
+    const toInput = document.getElementById("chartToDate");
+    if (fromInput) fromInput.value = fromDate.toISOString().split("T")[0];
+    if (toInput) toInput.value = toDate.toISOString().split("T")[0];
+
+    loadHistoricalMetrics();
   }
 
   // Yield Prediction Handler
@@ -1413,10 +1443,14 @@
       }
     });
 
-    // Monitoring Date Filter Button
+    // Monitoring Date Filter Button & Presets
     document.getElementById("loadHistoryButton")?.addEventListener("click", () => {
       loadHistoricalMetrics();
     });
+    document.getElementById("btn-range-30d")?.addEventListener("click", () => setDateRangePreset(30));
+    document.getElementById("btn-range-90d")?.addEventListener("click", () => setDateRangePreset(90));
+    document.getElementById("btn-range-season")?.addEventListener("click", () => setDateRangePreset("season"));
+    document.getElementById("btn-range-year")?.addEventListener("click", () => setDateRangePreset("year"));
 
     // Yield Prediction Button
     document.getElementById("btn-run-yield-predict")?.addEventListener("click", () => {
