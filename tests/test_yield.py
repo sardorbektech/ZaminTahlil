@@ -144,9 +144,13 @@ def test_yield_api_endpoints(tmp_path: Path) -> None:
         assert pred_data["predicted_yield_t_ha"] > 0
         assert pred_data["total_expected_yield_tons"] > 0
         assert len(pred_data["top_features"]) > 0
+        assert "data_sources" in pred_data
+        assert len(pred_data["data_sources"]) == 4
+        assert any("Sentinel-2" in s["name"] for s in pred_data["data_sources"])
 
         # 4. Get latest yield
         latest_resp = client.get(f"/api/fields/{field_id}/yield-latest")
         assert latest_resp.status_code == 200
         assert latest_resp.json() is not None
         assert latest_resp.json()["crop"] == "cotton"
+        assert len(latest_resp.json().get("data_sources", [])) == 4

@@ -87,6 +87,26 @@ def _web_mercator_polygon(geometry: dict[str, Any]) -> dict[str, Any]:
     return {"type": "Polygon", "coordinates": coordinates}
 
 
+def _deduplicate_daily_catalog_items(items: list[CatalogItem]) -> list[CatalogItem]:
+    """Har bir kalendar kunda faqat 1 ta — eng kam bulutlilikka ega tasvirni qoldirish."""
+    best_by_day: dict[str, CatalogItem] = {}
+    for item in items:
+        day_key = item.acquired_at[:10]
+        if day_key not in best_by_day:
+            best_by_day[day_key] = item
+            continue
+        current_best = best_by_day[day_key]
+        item_cloud = item.cloud_coverage if item.cloud_coverage is not None else 1000.0
+        best_cloud = (
+            current_best.cloud_coverage
+            if current_best.cloud_coverage is not None
+            else 1000.0
+        )
+        if item_cloud < best_cloud:
+            best_by_day[day_key] = item
+    return list(best_by_day.values())
+
+
 class SentinelHubClient:
     # CDSE (Copernicus Data Space Ecosystem) manzillari — 2-kodda ishlatilgan
     # va tasdiqlangan konfiguratsiyaga mos.
@@ -263,10 +283,11 @@ class SentinelHubClient:
                     },
                 )
             )
-        latest = sorted(found, key=lambda item: item.acquired_at, reverse=True)[
+        daily_deduped = _deduplicate_daily_catalog_items(found)
+        latest = sorted(daily_deduped, key=lambda item: item.acquired_at, reverse=True)[
             :MAX_STORED_ACQUISITIONS
         ]
-        logger.info("Sentinel catalog returned latest_count=%d", len(latest))
+        logger.info("Sentinel catalog returned latest_count=%d (from found=%d)", len(latest), len(found))
         return sorted(latest, key=lambda item: item.acquired_at)
 
 
@@ -332,8 +353,14 @@ class SentinelHubClient:
             seen_tokens.add(token_key)
             request_payload["next"] = next_token
 
-        items = sorted(found.values(), key=lambda item: item.acquired_at)
-        logger.info("Sentinel catalog range returned from_date=%s count=%d", from_date, len(items))
+        deduped = _deduplicate_daily_catalog_items(list(found.values()))
+        items = sorted(deduped, key=lambda item: item.acquired_at)
+        logger.info(
+            "Sentinel catalog range returned from_date=%s count=%d (from found=%d)",
+            from_date,
+            len(items),
+            len(found),
+        )
         return items
 
     async def _process_tiff(

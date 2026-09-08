@@ -268,6 +268,14 @@ class PhenologyPointOut(BaseModel):
     soil_moisture: float
 
 
+class YieldSourceItem(BaseModel):
+    name: str
+    count: str
+    detail: str
+    icon: str = "🛰️"
+    source_type: str = "satellite"
+
+
 class YieldPredictResponse(BaseModel):
     crop: str
     crop_display_name: str
@@ -281,6 +289,7 @@ class YieldPredictResponse(BaseModel):
     field_area_ha: float
     top_features: list[FeatureImportanceOut]
     phenology_timeline: list[PhenologyPointOut]
+    data_sources: list[YieldSourceItem] = Field(default_factory=list)
     features_count: int
     execution_time_sec: float
 

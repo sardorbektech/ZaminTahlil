@@ -133,6 +133,7 @@ CREATE TABLE IF NOT EXISTS yield_predictions (
     field_area_ha REAL NOT NULL,
     top_features_json TEXT NOT NULL,
     phenology_timeline_json TEXT NOT NULL,
+    data_sources_json TEXT NOT NULL DEFAULT '[]',
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_yield_field_time ON yield_predictions(field_id, created_at DESC);
@@ -209,6 +210,16 @@ class Database:
                 connection.execute("ALTER TABLE field_chat_messages ADD COLUMN rag_strategy TEXT")
             if "rag_source_title" not in chat_msg_columns:
                 connection.execute("ALTER TABLE field_chat_messages ADD COLUMN rag_source_title TEXT")
+
+            # Yield Predictions Schema migration for data_sources_json
+            yield_pred_columns = {
+                str(row["name"])
+                for row in connection.execute("PRAGMA table_info(yield_predictions)").fetchall()
+            }
+            if "data_sources_json" not in yield_pred_columns:
+                connection.execute(
+                    "ALTER TABLE yield_predictions ADD COLUMN data_sources_json TEXT NOT NULL DEFAULT '[]'"
+                )
 
             connection.execute(
                 "INSERT OR IGNORE INTO schema_version(version, applied_at) "

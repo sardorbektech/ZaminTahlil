@@ -250,7 +250,32 @@ class Repository:
                 f"SELECT * FROM acquisitions WHERE field_id = ? {clause} ORDER BY acquired_at DESC",
                 parameters,
             ).fetchall()
-        return [self._acquisition_record(row) for row in rows]
+        records = [self._acquisition_record(row) for row in rows]
+        best_by_date: dict[str, dict[str, Any]] = {}
+        for rec in records:
+            day = rec["acquired_at"][:10]
+            if day not in best_by_date:
+                best_by_date[day] = rec
+                continue
+            curr = best_by_date[day]
+            rec_cloud = (
+                rec.get("cloud_coverage")
+                if rec.get("cloud_coverage") is not None
+                else 1000.0
+            )
+            curr_cloud = (
+                curr.get("cloud_coverage")
+                if curr.get("cloud_coverage") is not None
+                else 1000.0
+            )
+            if rec_cloud < curr_cloud:
+                best_by_date[day] = rec
+            elif rec_cloud == curr_cloud:
+                rec_valid = rec.get("valid_pixel_count") or 0
+                curr_valid = curr.get("valid_pixel_count") or 0
+                if rec_valid > curr_valid:
+                    best_by_date[day] = rec
+        return sorted(best_by_date.values(), key=lambda r: r["acquired_at"], reverse=True)
 
     def get_acquisition(self, field_id: int, acquisition_id: int) -> dict[str, Any]:
         with self.database.connect() as connection:
@@ -554,6 +579,7 @@ class Repository:
         field_area_ha: float,
         top_features: list[dict[str, Any]],
         phenology_timeline: list[dict[str, Any]],
+        data_sources: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         now = iso_utc()
         with self.database.connect() as connection:
@@ -561,8 +587,8 @@ class Repository:
                 """INSERT INTO yield_predictions(
                     field_id, crop, model_name, predicted_yield_t_ha, yield_min_expected,
                     yield_max_expected, total_expected_yield_tons, field_area_ha,
-                    top_features_json, phenology_timeline_json, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    top_features_json, phenology_timeline_json, data_sources_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     field_id,
                     crop,
@@ -574,6 +600,7 @@ class Repository:
                     field_area_ha,
                     json.dumps(top_features, ensure_ascii=False),
                     json.dumps(phenology_timeline, ensure_ascii=False),
+                    json.dumps(data_sources or [], ensure_ascii=False),
                     now,
                 ),
             )
@@ -583,7 +610,10 @@ class Repository:
             ).fetchone()
         assert row is not None
         return decode_json_columns(
-            row_to_dict(row), "top_features_json", "phenology_timeline_json"
+            row_to_dict(row),
+            "top_features_json",
+            "phenology_timeline_json",
+            "data_sources_json",
         )
 
     def get_latest_yield_prediction(self, field_id: int) -> dict[str, Any] | None:
@@ -597,5 +627,8 @@ class Repository:
         if row is None:
             return None
         return decode_json_columns(
-            row_to_dict(row), "top_features_json", "phenology_timeline_json"
+            row_to_dict(row),
+            "top_features_json",
+            "phenology_timeline_json",
+            "data_sources_json",
         )

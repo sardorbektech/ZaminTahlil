@@ -150,3 +150,38 @@ async def test_historical_load_keeps_all_metrics_but_latest_five_images(
     await service.analyze(1, "latest")
     assert len(repository.list_acquisitions(1)) == 5
     assert len(repository.index_value_records(1, from_date=date(2025, 3, 1), limit=None)) == 30
+
+
+@pytest.mark.asyncio
+async def test_acquisitions_deduplicated_by_day_lowest_cloud(repository, tmp_path: Path) -> None:
+    from app.sentinel import _deduplicate_daily_catalog_items
+
+    sentinel = FakeSentinel()
+    # 2 acquisitions on 2026-09-07: 19% vs 13%
+    # 2 acquisitions on 2026-09-05: 1% vs 0%
+    sentinel.items = [
+        CatalogItem("2026-09-07T06:14:00Z", "P1_cloud19", "R1", 19.0, {"catalog_id": "P1"}),
+        CatalogItem("2026-09-07T06:14:30Z", "P1_cloud13", "R2", 13.0, {"catalog_id": "P2"}),
+        CatalogItem("2026-09-05T06:14:00Z", "P2_cloud1", "R1", 1.0, {"catalog_id": "P3"}),
+        CatalogItem("2026-09-05T06:14:30Z", "P2_cloud0", "R2", 0.0, {"catalog_id": "P4"}),
+        CatalogItem("2026-09-04T06:14:00Z", "P3_cloud2", "R1", 2.0, {"catalog_id": "P5"}),
+    ]
+    deduped = _deduplicate_daily_catalog_items(sentinel.items)
+    assert len(deduped) == 3
+    clouds_by_day = {item.acquired_at[:10]: item.cloud_coverage for item in deduped}
+    assert clouds_by_day["2026-09-07"] == 13.0
+    assert clouds_by_day["2026-09-05"] == 0.0
+    assert clouds_by_day["2026-09-04"] == 2.0
+
+    service = AnalysisService(
+        repository, sentinel, ArtifactWriter(tmp_path / "artifacts"), None, 20
+    )
+    await service.analyze(1, "latest")
+    acquisitions = repository.list_acquisitions(1)
+    days = [a["acquired_at"][:10] for a in acquisitions]
+    assert len(days) == len(set(days))
+    assert days == ["2026-09-07", "2026-09-05", "2026-09-04"]
+    # Verify that the stored acquisition for 2026-09-07 is the one with 13% cloud coverage
+    acq_map = {a["acquired_at"][:10]: a for a in acquisitions}
+    assert acq_map["2026-09-07"]["cloud_coverage"] == 13.0
+    assert acq_map["2026-09-05"]["cloud_coverage"] == 0.0

@@ -433,7 +433,26 @@ $("analyzeButton")?.addEventListener("click", async () => {
 
 async function loadAcquisitions(fieldId) {
   try {
-    const acqs = await apiFetch(`/api/fields/${fieldId}/acquisitions`);
+    const rawAcqs = await apiFetch(`/api/fields/${fieldId}/acquisitions`);
+    // Kalendar kunda faqat bitta — eng kam bulutlilikka ega tasvirni tanlash
+    const byDay = new Map();
+    (rawAcqs || []).forEach((acq) => {
+      const day = acq.acquired_at ? acq.acquired_at.split("T")[0] : "";
+      if (!day) return;
+      if (!byDay.has(day)) {
+        byDay.set(day, acq);
+      } else {
+        const existing = byDay.get(day);
+        const exCloud = existing.cloud_coverage !== null ? Number(existing.cloud_coverage) : 1000;
+        const newCloud = acq.cloud_coverage !== null ? Number(acq.cloud_coverage) : 1000;
+        if (newCloud < exCloud) {
+          byDay.set(day, acq);
+        }
+      }
+    });
+    const acqs = Array.from(byDay.values()).sort(
+      (a, b) => Date.parse(b.acquired_at) - Date.parse(a.acquired_at)
+    );
     state.acquisitions = acqs;
 
     if (acqs.length) {
@@ -461,8 +480,11 @@ function populateAcquisitionDropdowns() {
   selA.innerHTML = "";
   selB.innerHTML = "";
 
+  const seenDays = new Set();
   state.acquisitions.forEach((acq) => {
-    const dStr = acq.acquired_at.split("T")[0];
+    const dStr = acq.acquired_at ? acq.acquired_at.split("T")[0] : "";
+    if (!dStr || seenDays.has(dStr)) return;
+    seenDays.add(dStr);
     const cStr = fmtNum(acq.cloud_coverage, 0);
     const optA = new Option(`${dStr} (${cStr}%)`, acq.id);
     const optB = new Option(`${dStr} (${cStr}%)`, acq.id);
@@ -811,11 +833,45 @@ function renderYieldResults(data) {
 
   $("expectedYieldStat").textContent = `${fmtNum(yPerHa, 2)} t/ga`;
 
-  // 2. Top Features
+  // 2. Data Sources Breakdown (Sun'iy yo'ldosh, Ob-havo, Tuproq, Radar)
+  renderYieldSources(data.data_sources || []);
+
+  // 3. Top Features
   renderTopFeatures(data.top_features || []);
 
-  // 3. Phenology & Weather Timeline
+  // 4. Phenology & Weather Timeline
   renderPhenology(data.phenology_timeline || []);
+}
+
+function renderYieldSources(sources) {
+  const container = $("yieldSourcesStrip");
+  const badge = $("yieldSourcesBadge");
+  if (!container) return;
+  container.innerHTML = "";
+
+  if (!sources || !sources.length) {
+    container.innerHTML = `<p class="muted-note">—</p>`;
+    if (badge) badge.textContent = "0 ta manba";
+    return;
+  }
+
+  if (badge) badge.textContent = `${sources.length} ta manba`;
+
+  sources.forEach((src) => {
+    const card = document.createElement("div");
+    card.className = `yield-source-item type-${src.source_type || "satellite"}`;
+    card.innerHTML = `
+      <div class="source-top-line">
+        <div class="source-title-group">
+          <span class="source-icon">${src.icon || "🛰️"}</span>
+          <strong class="source-title">${src.name}</strong>
+        </div>
+        <span class="source-count-pill">${src.count}</span>
+      </div>
+      <p class="source-desc">${src.detail}</p>
+    `;
+    container.appendChild(card);
+  });
 }
 
 function renderTopFeatures(features) {
@@ -1278,9 +1334,19 @@ function renderAnnualChart(points) {
 
   if (emptyMsg) emptyMsg.classList.add("hidden");
 
-  points.sort((a, b) => Date.parse(a.acquired_at) - Date.parse(b.acquired_at));
+  // 1 kunda faqat bitta nuqtani qoldirish va vaqt bo'yicha tartiblash
+  const pointsByDay = new Map();
+  points.forEach((pt) => {
+    const day = pt.acquired_at ? pt.acquired_at.split("T")[0] : "";
+    if (!day) return;
+    if (!pointsByDay.has(day)) {
+      pointsByDay.set(day, pt);
+    }
+  });
+  const cleanPoints = Array.from(pointsByDay.values());
+  cleanPoints.sort((a, b) => Date.parse(a.acquired_at) - Date.parse(b.acquired_at));
 
-  const labels = points.map((p) => p.acquired_at.split("T")[0]);
+  const labels = cleanPoints.map((p) => p.acquired_at.split("T")[0]);
   const colors = {
     NDVI: "#059669",
     NDMI: "#2563eb",
@@ -1291,10 +1357,13 @@ function renderAnnualChart(points) {
 
   const datasets = ["NDVI", "NDMI", "NDRE", "EVI", "BSI"].map((idxName) => ({
     label: idxName,
-    data: points.map((p) => p.values && p.values[idxName] !== null ? Number(p.values[idxName]) : null),
+    data: cleanPoints.map((p) => p.values && p.values[idxName] !== null ? Number(p.values[idxName]) : null),
     borderColor: colors[idxName] || "#64748b",
     backgroundColor: colors[idxName] || "#64748b",
-    tension: 0.2,
+    tension: 0.25,
+    borderWidth: 2,
+    pointRadius: 3.5,
+    pointHoverRadius: 6,
     spanGaps: true,
   }));
 
@@ -1306,12 +1375,99 @@ function renderAnnualChart(points) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      layout: {
+        padding: {
+          bottom: 18,
+          left: 12,
+          right: 18,
+          top: 10,
+        },
+      },
       interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: {
+          position: "top",
+          labels: {
+            usePointStyle: true,
+            boxWidth: 8,
+            boxHeight: 8,
+            font: { family: "'Inter', sans-serif", size: 12, weight: "600" },
+            color: "#334155",
+            padding: 16,
+          },
+        },
+        tooltip: {
+          backgroundColor: "rgba(15, 23, 42, 0.92)",
+          titleFont: { family: "'JetBrains Mono', monospace", size: 12, weight: "700" },
+          bodyFont: { family: "'Inter', sans-serif", size: 12 },
+          padding: 10,
+          cornerRadius: 8,
+          callbacks: {
+            title: (items) => {
+              if (!items.length) return "";
+              const rawDate = items[0].label;
+              return `📅 ${rawDate}`;
+            },
+            label: (item) => {
+              const val = item.raw !== null && item.raw !== undefined ? Number(item.raw).toFixed(3) : "—";
+              return `  ${item.dataset.label}: ${val}`;
+            },
+          },
+        },
+      },
       scales: {
+        x: {
+          grid: {
+            color: "rgba(226, 232, 240, 0.6)",
+            drawBorder: false,
+          },
+          ticks: {
+            autoSkip: true,
+            maxTicksLimit: 12,
+            maxRotation: 0,
+            minRotation: 0,
+            padding: 8,
+            font: {
+              family: "'JetBrains Mono', monospace",
+              size: 11,
+              weight: "500",
+            },
+            color: "#64748b",
+            callback: function (val, index) {
+              const fullDate = this.getLabelForValue(val);
+              if (!fullDate || typeof fullDate !== "string") return fullDate;
+              const parts = fullDate.split("-");
+              if (parts.length === 3) {
+                const months = [
+                  "Yan", "Fev", "Mar", "Apr", "May", "Iyun",
+                  "Iyul", "Avg", "Sen", "Okt", "Noy", "Dek"
+                ];
+                const mIdx = parseInt(parts[1], 10) - 1;
+                const mName = months[mIdx] || parts[1];
+                return `${parseInt(parts[2], 10)} ${mName}`;
+              }
+              return fullDate;
+            },
+          },
+        },
         y: {
           min: -1.0,
           max: 1.0,
-          title: { display: true, text: t("chart.axisTitle") },
+          title: {
+            display: true,
+            text: t("chart.axisTitle"),
+            font: { family: "'Inter', sans-serif", size: 12, weight: "600" },
+            color: "#475569",
+          },
+          grid: {
+            color: "rgba(226, 232, 240, 0.6)",
+            drawBorder: false,
+          },
+          ticks: {
+            padding: 6,
+            font: { family: "'JetBrains Mono', monospace", size: 11 },
+            color: "#64748b",
+          },
         },
       },
     },
