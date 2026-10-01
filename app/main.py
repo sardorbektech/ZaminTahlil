@@ -74,11 +74,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        bot_task: asyncio.Task[None] | None = None
+        if settings.telegram_bot_token and settings.telegram_bot_token.strip():
+            from app.bot import start_telegram_bot
+            bot_task = asyncio.create_task(start_telegram_bot(app))
+            logger.info("Telegram Bot background polling task launched.")
+
         try:
             yield
         finally:
+            if bot_task is not None:
+                from app.bot import stop_telegram_bot
+                await stop_telegram_bot()
+                bot_task.cancel()
+                try:
+                    await bot_task
+                except (asyncio.CancelledError, Exception):
+                    pass
             if getattr(app.state, "sentinel", None) is not None:
                 await app.state.sentinel.aclose()
+
 
     fastapi_kwargs: dict[str, Any] = {
         "title": "ZaminTahlil API",

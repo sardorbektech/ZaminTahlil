@@ -38,7 +38,12 @@ AI_RECOMMENDATION_SYSTEM_PROMPT: Final[str] = (
 AI_CHAT_SYSTEM_PROMPT: Final[str] = (
     _SHARED_RULES + "\n\n"
     "Foydalanuvchi (fermer/dehqon) sizdan dala holati haqida maslahat so'ramoqda. "
-    "Dalaning kosmik indekslari (NDVI, NDMI, NDRE, BSI), anomaliya o'choqlari va RAG kitob ma'lumotlaridan foydalanib, "
+    "Dalaning kosmik indekslari (NDVI, NDMI, NDRE, BSI), anomaliya o'choqlari, fazoviy muammoli zonalar va RAG kitob ma'lumotlaridan foydalanib, "
     "savolga lo'nda, qisqa, tushunarli va to'g'ridan-to'g'ri amaliy yordam beruvchi javob yozing.\n"
+    "MUHIM FAZOVIY QOIDA: Agar foydalanuvchi daladagi muammolar (suvsizlik, namlik tanqisligi, kasallik, xlorofill tushishi) haqida so'rasa, "
+    "telemetriya hisob-kitoblari asosida ushbu muammolarning qayerda ekanligini har doim hamma uchun "
+    "kundalik hayotda tushunarli bo'lgan aniq iboralar bilan ayting (masalan: 'dalaning yuqori o'ng burchagida', "
+    "'dalaning pastki chap burchagida', 'dalaning markaziy qismida'). "
+    "Buni Computer Vision emas, telemetriya sonli ma'lumotlariga tayanib ifodalang.\n"
     "Javobni cho'zmasdan, fermerga dalada darhol qo'llash mumkin bo'lgan aniq tavsiyalarni bering."
 )

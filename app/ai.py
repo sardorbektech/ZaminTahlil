@@ -220,8 +220,9 @@ class AIClient:
         chat_summary: str | None = None,
         rag_context: str | None = None,
         language: str | None = None,
+        spatial_problem_zones: dict[str, Any] | None = None,
     ) -> AIResult:
-        """System Prompt + 5 kunlik NDVI qiymatlar + Summary + RAG kontekst + User savoli."""
+        """System Prompt + 5 kunlik NDVI qiymatlar + Summary + RAG kontekst + Fazoviy muammo zonalari + User savoli."""
         structured_context: dict[str, Any] = {
             "field": {
                 "crop_name": field.get("crop_name"),
@@ -238,8 +239,12 @@ class AIClient:
         if chat_summary:
             structured_context["previous_chat_summary_with_ids_and_time"] = chat_summary
 
+        if spatial_problem_zones:
+            structured_context["field_spatial_problem_zones_and_human_locations"] = spatial_problem_zones
+
         if rag_context:
             structured_context["rag_agronomy_book_knowledge"] = rag_context
+
 
         inputs: list[dict[str, Any]] = [
             {

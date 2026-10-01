@@ -177,13 +177,59 @@ python -m pytest -q
 
 ---
 
+## 🤖 Telegram Bot Orqali Boshqarish (Agentic Management)
+
+Platformani Telegram orqali boshqarish uchun `.env` faylida `@BotFather` dan olingan bot tokenini ko'rsating:
+```env
+TELEGRAM_BOT_TOKEN=1234567890:ABCdefGHIjklMNOpqrsTUVwxyz
+```
+
+Dastur ishga tushganda (`uvicorn app.main:app`), Telegram bot ham fonda avtomatik ishga tushadi:
+- `🌾 /dalalar` — Barcha dalalar ro'yxati va faol dalani tanlash.
+- `🛰️ /tahlil` — Tanlangan dalaning Sentinel-2 kosmik fotosuratini va tahlil metrikalarini qabul qilish.
+- `📊 /indekslar` — Spektral xaritalar (NDVI, NDMI, NDRE, EVI, BSI).
+- `🔍 /muammolar` — Dalaning fazoviy muammoli zonalari (suvsizlik va kasallik qayerda ekanligini oddiy tilda ko'rsatish).
+- `🌱 /hosil` — CatBoost ML algoritmi orqali hosildorlik bashorati.
+- `📋 /tavsiya` — 3-toifali agronomik tavsiyalar.
+- `🌤️ /obhavo` — Dala hududi bo'yicha 7 kunlik agrometeorologiya prognozi.
+- `🤖 /ai <savol>` — AI Bosh Agronomi bilan erkin savol-javob muloqoti.
+
+---
+
+## 🔌 Model Context Protocol (MCP) Server
+
+Tashqi AI tizimlari (Claude Desktop, Cursor, Google Antigravity va boshqalar) ZaminTahlil platformasi imkoniyatlaridan foydalanishi uchun MCP server taqdim etiladi.
+
+MCP serverni ishga tushirish:
+```bash
+python -m app.mcp_server
+```
+
+Mavjud MCP vositalari (Tools):
+- `list_fields` — Barcha ro'yxatdan o'tgan dalalar ro'yxatini olish.
+- `get_field_details` — Dala koordinatalari, maydoni va xususiyatlarini olish.
+- `get_field_satellite_metrics` — So'nggi Sentinel-2 indekslari va ko'rsatkichlarini olish.
+- `get_field_problem_zones` — Suvsizlik va kasallik o'choqlarining xalqchil fazoviy joylashuvini olish.
+- `predict_crop_yield` — Kutilayotgan hosildorlikni (t/ga va tonna) bashorat qilish.
+- `get_agronomic_recommendation` — 3-toifali agronomik tavsiyalarni olish.
+- `get_weather_forecast` — 7 kunlik agrometeorologiya prognozini olish.
+- `ask_ai_agronomist` — RAG agronomik kitoblari va telemetriya asosida AI Agronomiga savol berish.
+
+---
+
 ## 📁 Loyiha Jildlar Tuzilmasi
 
 ```text
 ZaminTahlil/
 ├── app/                        # Asosiy ilova kodi
+│   ├── bot/                    # Telegram Bot moduli (Aiogram 3.x)
+│   │   ├── handlers.py         # Bot buyruqlari va hodisalari
+│   │   ├── keyboards.py        # Asosiy va inline klaviaturalar
+│   │   └── service.py          # Polling va lifespan xizmati
 │   ├── deps.py                 # Dependency Injection va app.state initsializatsiyasi
 │   ├── main.py                 # FastAPI asosiy kirish nuqtasi va middlewarelar
+│   ├── mcp_server.py           # Model Context Protocol (MCP) Server
+│   ├── spatial_zones.py        # Deterministik fazoviy muammoli zonalar dvigateli
 │   ├── routers/                # Modulli marshrutizatorlar
 │   │   ├── fields.py           # Dala yaratish, ro'yxat va GeoJSON amallari
 │   │   ├── analysis.py         # Sentinel-2 tahlillari, artefaktlar va yillik dinamika
@@ -209,22 +255,14 @@ ZaminTahlil/
 │   ├── weather.py              # Open-Meteo & NASA POWER ob-havo integratsiyasi
 │   ├── yield_service.py        # ML hosildorlik inferensiyasi (LRU model keshi)
 │   └── static/                 # Frontend aktivlari
-│       ├── app.js              # Xarita, tahlil, hosildorlik va chat boshqaruvi
-│       ├── i18n.js             # 4 tilda mahalliylashtirish (uz-latn, uz-cyrl, ru, en)
-│       ├── index.html          # Asosiy interfeys sahifasi
-│       ├── logo.png            # Platforma logotipi
-│       └── styles.css          # Zamonaviy dizayn uslublari
 ├── data/                       # Ma'lumotlar va precomputed RAG
-│   ├── rag_seed.json           # 100% precomputed RAG ko'chma seed fayli
-│   ├── graph/                  # Ekstraksiya qilingan agronomik bilimlar grafi
-│   └── books/                  # Lokal kitoblar (PDF fayllar gitignore qilingan)
 ├── models/                     # O'qitilgan ML modellar (.joblib)
 ├── scripts/                    # Yordamchi CLI skriptlar
-│   ├── cleanup_artifacts.py    # Eskirgan tasvirlarni tozalash
-│   └── ingest_books.py         # Offline developer RAG ingestion va export
-├── tests/                      # Pytest avtomatlashtirilgan testlari (69 ta test, 100% pass)
+├── tests/                      # Pytest avtomatlashtirilgan testlari (75+ test, 100% pass)
 ├── AGENTS.md                   # Agentlar va ishlab chiquvchilar uchun qoidalar
 ├── pyproject.toml              # Loyiha metadata va pytest sozlamalari
 ├── requirements.txt            # Minimal toza bog'liqliklar ro'yxati
 ├── ABOUT.md                    # To'liq arxitektura va ilmiy-texnik hujjat
 └── README.md                   # Ishga tushirish qo'llanmasi
+```
+

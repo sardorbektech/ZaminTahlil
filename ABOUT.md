@@ -207,7 +207,34 @@ Loyiha 4 ta ixtisoslashgan agronomik RAG strategiyasini o‘z ichiga oladi va fo
 - **Sidebar Tozalash Tugmasi**: `🗑️ Tozalash` tugmasi va xavfsizlik modali;
 - **Tasdiqlash Paroli**: **`roziman`** paroli kiritilganda bazadagi barcha dala maydonlari, hisob-kitoblar, xaritalar va chat xabarlari to‘liq o‘chiriladi (agronom kitoblari saqlanadi).
 
+### 3.11. Deterministik Fazoviy Muammoli Zonalar (Spatial Problem Zones)
+- **Computer Vision-siz sof telemetriya**: Kosmik Sentinel-2 multispektral raster massivlari (`NDMI.npy`, `NDRE.npy`, `NDVI.npy`) sonli tahlili asosida eng quruq (suvsizlik) va xlorofill eng ko'p parchalangan (kasallik/azot tanqisligi) hududlar deterministik hisoblanadi.
+- **Xalqchil Insoniy Joylashuv Iboralari**: Fazoviy koordinatalar 8 ta kompas sektori orqali har qanday fermer darhol tushunadigan oddiy tilga o'giriladi:
+  - *`dalaning yuqori o'ng burchagida`* (Shimoli-sharqiy);
+  - *`dalaning yuqori chap burchagida`* (Shimoli-g'arbiy);
+  - *`dalaning pastki o'ng burchagida`* (Janubi-sharqiy);
+  - *`dalaning pastki chap burchagida`* (Janubi-g'arbiy);
+  - *`dalaning markaziy qismida`* (Markaziy).
+- **AI Chat Integratsiyasi**: Mazkur fazoviy joylashuv ma'lumotlari LLM kontekstiga uzatiladi va AI Bosh Agronomi foydalanuvchiga muammoning aniq qayerda ekanligini aynan shu xalqchil iboralar bilan tushuntiradi.
+
+### 3.12. Telegram Bot orqali Agentic Boshqaruv (Aiogram 3.x)
+- **To'liq Web Parity**: Veb-interfeysdagi barcha imkoniyatlar matnli buyruqlar va interaktiv klaviatura orqali Telegram botda ham to'liq mavjud:
+  - `🌾 /dalalar` — barcha dalalar ro'yxati va faol dalani tanlash;
+  - `🛰️ /tahlil` — Sentinel-2 fotosuratini va asosiy indekslarni olish;
+  - `📊 /indekslar` — spektral qatlamlar (NDVI, NDMI, NDRE, EVI, BSI) xaritalarini qabul qilish;
+  - `🔍 /muammolar` — suvsizlik va kasallik o'choqlarining fazoviy joylashuvini ko'rish;
+  - `🌱 /hosil` — CatBoost hosil bashoratini hisoblash;
+  - `📋 /tavsiya` — 3-toifali agronomik tavsiyalar;
+  - `🌤️ /obhavo` — 7 kunlik agrometeorologiya ob-havo ma'lumotlari;
+  - `🤖 /ai <savol>` — AI Bosh Agronomi bilan to'liq RAG va telemetriya asosidagi muloqot.
+- **Asinxron Lifespan**: Bot FastAPI ilovasining umumiy `lifespan` siklida fon vazifasi sifatida ishga tushadi va to'xtatiladi.
+
+### 3.13. Model Context Protocol (MCP Server)
+- **Tashqi Agentlar Integratsiyasi**: Claude Desktop, Cursor, Google Antigravity va boshqa AI agentlari uchun rasmiy `mcp` (v2.x) protokoli orqali ishlaydigan mustaqil server (`python -m app.mcp_server`).
+- **MCP Asboblari (Tools)**: `list_fields`, `get_field_details`, `get_field_satellite_metrics`, `get_field_problem_zones`, `predict_crop_yield`, `get_agronomic_recommendation`, `get_weather_forecast`, `ask_ai_agronomist`.
+
 ---
+
 
 ## 4. Matematik Formulalar va Hisoblash Metodologiyasi
 
@@ -259,7 +286,7 @@ Loyiha Google Cloud VM xotirasini tejash uchun faqat eng zaruriy 20 ta toza kutu
 
 ## 6. Ma’lumotlar Bazasi Sxemasi (Schema v7)
 
-Loyiha quyidagi 10 ta jadvaldan iborat relying bazaga ega:
+Loyiha quyidagi 11 ta jadvaldan iborat relying bazaga ega:
 
 1. **`fields`**: `id`, `public_id` (8 xonali ID), `geometry_json`, `geometry_hash` (UNIQUE), `area_hectares`, `crop_name`, `planted_on`, `growth_stage`, `created_at`, `updated_at`.
 2. **`acquisitions`**: Sentinel-2 tasvirlari sanasi, mahsulot ID, reviziya kaliti, bulutlilik ko‘rsatkichi.
@@ -271,6 +298,7 @@ Loyiha quyidagi 10 ta jadvaldan iborat relying bazaga ega:
 8. **`rag_documents`**: Bazaga kiritilgan PDF kitoblar (`is_active`, `embedding_model`, `embedding_dim`, nomi, fayl yo‘li, sahifalar va bo‘laklar soni).
 9. **`rag_chunks`**: Kitoblardan ajratilgan matn bo‘laklari va 768-o‘lchamli vektorlar (`embedding BLOB`).
 10. **`yield_predictions`**: Hosildorlik bashorati tarixi (model, $t/ga$, jami tonna, top parametrlar, fenologiya, `data_sources_json`).
+11. **`telegram_users`**: Telegram foydalanuvchilarining joriy tanlangan faol dalasi (`chat_id`, `active_field_id`, vaqti).
 
 ---
 
@@ -281,6 +309,8 @@ Loyiha quyidagi 10 ta jadvaldan iborat relying bazaga ega:
 - `GET /api/fields` — Barcha saqlangan dalalar ro‘yxati.
 - `GET /api/fields/{id}` — Dala tafsilotlari (id yoki 8 xonali public_id orqali).
 - `POST /api/database/purge-fields` — Barcha dala maydonlari va tahlillarni tozalash (Parol: `roziman`).
+- `GET /api/fields/{id}/problem-zones` — Dalaning fazoviy muammoli zonalari (suvsizlik va kasallik o'choqlari joylashuvi xalqchil tushunarli tilda).
+
 
 ### Sun’iy Yo‘ldosh Tahlili & Radar Hotspot
 - `POST /api/fields/{id}/analyze` — Oxirgi 14 kunlik Sentinel Hub tasvirlarini yuklash (har bir kundan faqat 1 ta eng kam bulutli) va 10+ indekslarni hisoblash.

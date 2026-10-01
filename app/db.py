@@ -137,7 +137,16 @@ CREATE TABLE IF NOT EXISTS yield_predictions (
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_yield_field_time ON yield_predictions(field_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS telegram_users (
+    chat_id INTEGER PRIMARY KEY,
+    active_field_id INTEGER REFERENCES fields(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
 """
+
+
 
 
 class Database:

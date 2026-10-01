@@ -12,7 +12,8 @@ This file helps Autohand understand how to work with this project.
 
 - **Install**: `pip install -r requirements.txt`
 - **Run**: `uvicorn app.main:app --reload`
-- **Test**: `venv\\Scripts\\python.exe -m pytest -q`
+- **Test**: `.venv\Scripts\python.exe -m pytest -q`
+
 
 ## Instruction Sources
 

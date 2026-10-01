@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     models_dir: Path = Path("models")
     rag_similarity_threshold: float = Field(default=0.50, ge=0.0, le=1.0)
     rag_model_name: str = "nomic-ai/nomic-embed-text-v1.5"
+    telegram_bot_token: str | None = None
+    telegram_webapp_url: str | None = None
+
 
     @field_validator("sentinel_proxy", mode="before")
     @classmethod

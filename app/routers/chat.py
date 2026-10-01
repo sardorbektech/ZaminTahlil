@@ -24,6 +24,8 @@ from app.schemas import (
     ChatResponse,
     ChatSummaryOut,
 )
+from app.spatial_zones import calculate_spatial_problem_zones
+
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +49,22 @@ async def chat_summary_endpoint(
 ) -> dict[str, Any] | None:
     repository.get_field(field_id)
     return repository.get_chat_summary(field_id)
+
+
+@router.get("/api/fields/{field_id}/problem-zones")
+async def get_field_problem_zones_endpoint(
+    field_id: int,
+    repository: RepositoryDependency,
+    settings: SettingsDependency,
+) -> dict[str, Any]:
+    """Dala telemetriyasi bo'yicha deterministik fazoviy muammoli zonalarni qaytaradi."""
+    repository.get_field(field_id)
+    return calculate_spatial_problem_zones(
+        field_id,
+        repository,
+        artifact_root=settings.artifact_dir,
+    )
+
 
 
 @router.post("/api/fields/{field_id}/chat", response_model=ChatResponse)
@@ -202,7 +220,14 @@ async def chat(
         existing_summary_record["summary_text"] if existing_summary_record else None
     )
 
-    # 5. AI chat generatsiyasi
+    # 5. Dala deterministik fazoviy muammoli zonalarini hisoblash
+    problem_zones = calculate_spatial_problem_zones(
+        field_id,
+        repository,
+        artifact_root=settings.artifact_dir,
+    )
+
+    # 6. AI chat generatsiyasi
     try:
         result = await ai.chat(
             field=field,
@@ -212,6 +237,7 @@ async def chat(
             chat_summary=summary_text,
             rag_context=rag_context_str,
             language=payload.language,
+            spatial_problem_zones=problem_zones,
         )
     except AIError as exc:
         logger.error("AI chat failed field_id=%s", field_id, exc_info=True)
@@ -219,7 +245,7 @@ async def chat(
             status_code=502, detail=detail(settings, exc, "AI xizmatida xatolik")
         ) from exc
 
-    # 6. Assistant javobini saqlash
+    # 7. Assistant javobini saqlash
     repository.add_chat_message(
         field_id,
         "assistant",
@@ -229,7 +255,7 @@ async def chat(
         rag_source_title=rag_source_title,
     )
 
-    # 7. Xulosa (Summary) ni yangilash
+    # 8. Xulosa (Summary) ni yangilash
     all_messages = repository.list_chat_messages(field_id, limit=30)
     new_summary = await ai.generate_summary(all_messages, existing_summary=summary_text)
     repository.upsert_chat_summary(
@@ -247,4 +273,6 @@ async def chat(
         "rag_strategy": rag_strategy,
         "rag_source_title": rag_source_title,
         "summary": new_summary,
+        "problem_zones": problem_zones,
     }
+

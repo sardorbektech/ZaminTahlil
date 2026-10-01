@@ -220,6 +220,8 @@ class ChatResponse(BaseModel):
     rag_strategy: str = "advanced"
     rag_source_title: str = "🔬 Advanced RAG"
     summary: str | None = None
+    problem_zones: dict[str, Any] | None = None
+
 
 
 class ChatHistoryMessageOut(BaseModel):

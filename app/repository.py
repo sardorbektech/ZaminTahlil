@@ -632,3 +632,25 @@ class Repository:
             "phenology_timeline_json",
             "data_sources_json",
         )
+
+    def get_telegram_active_field_id(self, chat_id: int) -> int | None:
+        with self.database.connect() as connection:
+            row = connection.execute(
+                "SELECT active_field_id FROM telegram_users WHERE chat_id = ?",
+                (chat_id,),
+            ).fetchone()
+        if row and row["active_field_id"] is not None:
+            return int(row["active_field_id"])
+        return None
+
+    def set_telegram_active_field_id(self, chat_id: int, field_id: int | None) -> None:
+        now = iso_utc()
+        with self.database.connect() as connection:
+            connection.execute(
+                """INSERT INTO telegram_users(chat_id, active_field_id, created_at, updated_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(chat_id) DO UPDATE SET
+                    active_field_id = excluded.active_field_id,
+                    updated_at = excluded.updated_at""",
+                (chat_id, field_id, now, now),
+            )
