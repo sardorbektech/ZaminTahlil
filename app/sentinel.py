@@ -164,7 +164,7 @@ class SentinelHubClient:
     async def _request(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
         last_error: Exception | None = None
         client = self._get_client()
-        max_attempts = 4
+        max_attempts = 5
         for attempt in range(max_attempts):
             try:
                 response = await client.request(method, url, **kwargs)
@@ -174,7 +174,7 @@ class SentinelHubClient:
                         wait_time = float(retry_after_hdr) if retry_after_hdr else (1.5 * (2**attempt))
                     except (ValueError, TypeError):
                         wait_time = 1.5 * (2**attempt)
-                    wait_time = min(max(wait_time, 1.0), 12.0)
+                    wait_time = min(max(wait_time, 1.0), 15.0)
                     logger.warning(
                         "Sentinel Hub rate limit (429) url=%s. %.1fs kutilmoqda (urinish %d/%d)...",
                         url, wait_time, attempt + 1, max_attempts
@@ -183,7 +183,11 @@ class SentinelHubClient:
                     continue
 
                 if response.status_code in {500, 502, 503, 504} and attempt < max_attempts - 1:
-                    wait_time = 1.0 * (2**attempt)
+                    wait_time = min(1.5 * (2**attempt), 15.0)
+                    logger.warning(
+                        "Sentinel Hub server bandligi (%d) url=%s. %.1fs kutilmoqda (urinish %d/%d)...",
+                        response.status_code, url, wait_time, attempt + 1, max_attempts
+                    )
                     await asyncio.sleep(wait_time)
                     continue
 

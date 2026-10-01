@@ -115,8 +115,21 @@ async def analyze(
         ) from exc
     except SentinelError as exc:
         logger.error("Sentinel analyze failed field_id=%s", field_id, exc_info=True)
+        err_msg = str(exc)
+        if "503" in err_msg or "Service Unavailable" in err_msg:
+            user_msg = (
+                "Copernicus Sentinel-2 sun'iy yo'ldosh xizmati ayni paytda band yoki profilaktika rejimida (503 Service Unavailable). "
+                "Iltimos, 1-2 daqiqadan so'ng 'Sun'iy yo'ldoshdan tahlil qilish' tugmasini qayta bosing."
+            )
+        elif "429" in err_msg or "Too Many Requests" in err_msg:
+            user_msg = (
+                "Sentinel-2 so'rovlar limiti oshdi (429 Too Many Requests). "
+                "Iltimos, biroz kutib qayta urinib ko'ring."
+            )
+        else:
+            user_msg = f"Copernicus Sentinel-2 xizmatida xatolik: {exc}"
         raise HTTPException(
-            status_code=502, detail=f"Copernicus Sentinel-2 xizmatida xatolik: {exc}"
+            status_code=502, detail=user_msg
         ) from exc
     except Exception as exc:
         logger.exception("Field analysis failed field_id=%s", field_id)

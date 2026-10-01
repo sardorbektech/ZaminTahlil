@@ -262,7 +262,26 @@ class AnalysisService:
     async def analyze(self, field_id: int, mode: str) -> AnalysisResult:
         logger.info("Field analysis started field_id=%s mode=%s", field_id, mode)
         field = self.repository.get_field(field_id)
-        catalog_items = await self.sentinel.catalog(field["geometry"])
+        try:
+            catalog_items = await self.sentinel.catalog(field["geometry"])
+        except SentinelError as exc:
+            # Agar Copernicus serveri vaqtincha ishlamasa (503/504), bazada oldingi tasvirlar bormi tekshiramiz:
+            threshold = self.cloud_free_threshold if mode == "latest_cloud_free" else None
+            existing_selected = self.repository.select_acquisition(field_id, cloud_free_threshold=threshold)
+            if existing_selected is not None:
+                logger.warning(
+                    "Copernicus catalog xizmati vaqtincha ishlamayapti (%s). Bazadagi mavjud tasvirdan foydalanilmoqda.", exc
+                )
+                existing_rec = self.repository.get_recommendation(field_id)
+                rec_out = RecommendationOut(**existing_rec) if existing_rec else None
+                return AnalysisResult(
+                    selected_acquisition=AcquisitionOut(**serialize_acquisition(self.repository, existing_selected)),
+                    new_acquisitions_processed=0,
+                    recommendation=rec_out,
+                    recommendation_error="Copernicus serveri vaqtincha band (503). Avvalgi saqlangan tasvir ko'rsatilmoqda.",
+                )
+            raise
+
         processed: list[dict[str, Any]] = []
         pending: list[tuple[CatalogItem, dict[str, Any]]] = []
         for item in catalog_items:
@@ -289,12 +308,12 @@ class AnalysisService:
         for (item, acquisition), raster in zip(pending, rasters, strict=True):
             if isinstance(raster, Exception):
                 self.repository.mark_processing_failure(int(acquisition["id"]), str(raster))
-                logger.error(
-                    "Acquisition raster fetch failed acquisition_id=%s: %s",
+                logger.warning(
+                    "Acquisition raster fetch failed acquisition_id=%s, skipping: %s",
                     acquisition["id"],
                     raster,
                 )
-                raise raster
+                continue
             await self._process_item(field, item, acquisition, raster=raster)
             processed.append(self.repository.get_acquisition(field_id, int(acquisition["id"])))
             if not isinstance(raster, Exception) and (not newest_item_time or item.acquired_at > newest_item_time):
