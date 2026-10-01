@@ -514,13 +514,20 @@ class YieldInferenceService:
                 {"feature": expected_features, "importance": importances}
             ).sort_values(by="importance", ascending=False).head(10)
 
+            total_imp = float(feat_imp_df["importance"].sum())
+            if total_imp <= 0:
+                total_imp = 1.0
+
             for _, row in feat_imp_df.iterrows():
                 f_name = str(row["feature"])
                 desc = FEATURE_DESCRIPTIONS.get(f_name, f_name)
+                # Normallashtirilgan foiz (0..100%), maksimal 100% dan oshmaydi
+                raw_pct = (float(row["importance"]) / total_imp) * 100.0
+                norm_pct = min(100.0, max(0.0, round(raw_pct, 1)))
                 top_features_list.append(
                     FeatureImportanceItem(
                         feature=f_name,
-                        importance=round(float(row["importance"]), 4),
+                        importance=norm_pct,
                         description=desc,
                     )
                 )
@@ -530,10 +537,12 @@ class YieldInferenceService:
             total_std = float(top_feats.sum()) if top_feats.sum() > 0 else 1.0
             for f_name, val in top_feats.items():
                 desc = FEATURE_DESCRIPTIONS.get(str(f_name), str(f_name))
+                raw_pct = (float(val) / total_std) * 100.0
+                norm_pct = min(100.0, max(0.0, round(raw_pct, 1)))
                 top_features_list.append(
                     FeatureImportanceItem(
                         feature=str(f_name),
-                        importance=round(float(val / total_std), 4),
+                        importance=norm_pct,
                         description=desc,
                     )
                 )

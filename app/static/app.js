@@ -1116,11 +1116,15 @@
     if (featContainer && data.top_features) {
       featContainer.innerHTML = data.top_features
         .map((f) => {
-          const pct = Math.round(f.importance * 100);
+          let val = typeof f.importance === "number" ? f.importance : 0;
+          if (val <= 1.0 && val > 0) {
+            val = val * 100;
+          }
+          const pct = Math.min(100, Math.max(0, Math.round(val)));
           return `
           <div class="feature-item">
             <div class="feature-info">
-              <span>${f.feature}</span>
+              <span>${f.description || f.feature}</span>
               <span>${pct}%</span>
             </div>
             <div class="feature-progress-bg">
@@ -1399,15 +1403,31 @@
       list.innerHTML = `<p style="color: var(--color-text-muted);">Manbalar mavjud emas.</p>`;
     } else {
       list.innerHTML = sources
-        .map(
-          (s) => `
-        <div class="source-item-card">
-          <div class="source-item-title">\ud83d\udcd6 ${s.document_name || "Qo'llanma"}</div>
-          <div class="source-item-score">Sahifa: ${s.page_number || "\u2014"} \u00b7 Score: ${s.score ? s.score.toFixed(2) : "\u2014"}</div>
-          <div class="source-item-text">"${s.text}"</div>
-        </div>
-      `
-        )
+        .map((s) => {
+          const isSat = s.source_type === "satellite" || (s.document_name && s.document_name.includes("Sentinel"));
+          if (isSat) {
+            const timeStr = s.acquired_at ? formatDateUI(s.acquired_at) : "Oxirgi o'tish";
+            const cloudStr = s.cloud_coverage != null ? `${Number(s.cloud_coverage).toFixed(1)}%` : "0.0%";
+            return `
+            <div class="source-item-card" style="border-left: 4px solid #16a34a; background: #f0fdf4; margin-bottom: 12px; padding: 14px; border-radius: 8px;">
+              <div class="source-item-title" style="color: #166534; font-weight: 700; font-size: 0.92rem;">🛰️ ${s.document_name || "Sentinel-2 Sun'iy Yo'ldosh Tasviri"}</div>
+              <div class="source-item-score" style="color: #15803d; font-size: 0.82rem; margin: 4px 0 8px; font-weight: 500;">
+                Vaqti: <b>${timeStr}</b> · Bulutlilik: <b>${cloudStr}</b> · Manba: <b>Copernicus Dataspace</b>
+              </div>
+              <div class="source-item-text" style="white-space: pre-line; background: #ffffff; padding: 10px; border-radius: 6px; border: 1px solid #bbf7d0; font-size: 0.84rem; color: #1e293b;">${s.text}</div>
+            </div>
+            `;
+          }
+          return `
+          <div class="source-item-card" style="margin-bottom: 12px; padding: 14px; border-radius: 8px;">
+            <div class="source-item-title" style="font-weight: 700; font-size: 0.92rem;">📖 ${s.document_name || "Qo'llanma"}</div>
+            <div class="source-item-score" style="color: var(--color-text-muted); font-size: 0.82rem; margin: 4px 0 8px;">
+              Sahifa: <b>${s.page_number || "—"}</b> · Moslik: <b>${s.score ? s.score.toFixed(2) : "—"}</b> · Manba: <b>Agronomik Kitoblar</b>
+            </div>
+            <div class="source-item-text" style="font-size: 0.84rem;">"${s.text}"</div>
+          </div>
+        `;
+        })
         .join("");
     }
     drawer.classList.add("open");

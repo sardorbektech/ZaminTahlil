@@ -211,7 +211,9 @@ class AnalysisService:
         async def fetch(item: CatalogItem) -> RasterData | Exception:
             async with semaphore:
                 try:
-                    return await self.sentinel.raster(field["geometry"], item.acquired_at)
+                    res = await self.sentinel.raster(field["geometry"], item.acquired_at)
+                    await asyncio.sleep(0.2)
+                    return res
                 except Exception as exc:  # noqa: BLE001
                     return exc
 
@@ -413,12 +415,12 @@ class AnalysisService:
         for (item, acquisition), raster in zip(pending, rasters, strict=True):
             if isinstance(raster, Exception):
                 self.repository.mark_processing_failure(int(acquisition["id"]), str(raster))
-                logger.error(
-                    "Acquisition raster fetch failed acquisition_id=%s: %s",
+                logger.warning(
+                    "Acquisition raster fetch failed acquisition_id=%s, skipping: %s",
                     acquisition["id"],
                     raster,
                 )
-                raise raster
+                continue
             await self._process_item(field, item, acquisition, raster=raster, render_artifacts=False)
             processed_count += 1
         logger.info(

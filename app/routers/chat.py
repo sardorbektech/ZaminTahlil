@@ -227,6 +227,43 @@ async def chat(
         artifact_root=settings.artifact_dir,
     )
 
+    # 5b. Tashqi sun'iy yo'ldosh tahlili manbasini manbalar ro'yxatiga kiritish
+    latest_acq = repository.select_acquisition(field_id)
+    if latest_acq:
+        acq_time = latest_acq.get("acquired_at") or "Noma'lum"
+        prod_id = latest_acq.get("product_id") or "Sentinel-2 L2A"
+        cloud = latest_acq.get("cloud_coverage")
+        cloud_str = f"{cloud:.1f}%" if cloud is not None else "0.0%"
+
+        idx_parts = []
+        for idx_name, items in recent_metrics.items():
+            if items and items[0].get("mean_ndvi") is not None:
+                idx_parts.append(f"{idx_name}: {items[0]['mean_ndvi']:.2f}")
+
+        idx_str = ", ".join(idx_parts) if idx_parts else "NDVI, NDMI, NDRE, EVI, BSI"
+        sat_text = (
+            f"Manba: Sentinel-2 L2A (Copernicus Dataspace)\n"
+            f"Tasvir olingan sana: {acq_time}\n"
+            f"Product ID: {prod_id}\n"
+            f"Bulutlilik darajasi: {cloud_str}\n"
+            f"Spektral indekslar: {idx_str}"
+        )
+        if problem_zones and problem_zones.get("most_severe_issue"):
+            issue = problem_zones["most_severe_issue"]
+            sat_text += f"\nFazoviy tahlil: {issue.get('title', '')} ({issue.get('direction_text', '')})"
+
+        sat_source = {
+            "source_type": "satellite",
+            "document_name": "🛰️ Sentinel-2 L2A Sun'iy Yo'ldosh Tasviri",
+            "page_number": None,
+            "score": 1.0,
+            "acquired_at": acq_time,
+            "product_id": prod_id,
+            "cloud_coverage": cloud,
+            "text": sat_text,
+        }
+        rag_sources_out.insert(0, sat_source)
+
     # 6. AI chat generatsiyasi
     try:
         result = await ai.chat(

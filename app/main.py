@@ -80,7 +80,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if settings.telegram_bot_token and settings.telegram_bot_token.strip():
             from app.bot import start_telegram_bot
             bot_task = asyncio.create_task(start_telegram_bot(app))
-            logger.info("Telegram Bot background polling task launched.")
+            logger.info("🤖 Telegram Bot fon rejimi pollingi ishga tushirildi.")
+        else:
+            logger.warning(
+                "⚠️ TELEGRAM_BOT_TOKEN sozlanmagan. Telegram bot ishga tushishi uchun .env faylida "
+                "TELEGRAM_BOT_TOKEN=<token> kiritilgan bo'lishi kerak."
+            )
 
         try:
             yield

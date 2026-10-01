@@ -27,7 +27,7 @@ async def start_telegram_bot(app: FastAPI) -> None:
         logger.info("TELEGRAM_BOT_TOKEN sozlanmagan, bot ishga tushirilmaydi.")
         return
 
-    logger.info("Telegram Bot ishga tushirilmoqda...")
+    logger.info("🤖 Telegram Bot ishga tushirilmoqda...")
     bot = Bot(token=token.strip())
     dp = Dispatcher()
 
@@ -41,12 +41,14 @@ async def start_telegram_bot(app: FastAPI) -> None:
     _dispatcher_instance = dp
 
     try:
+        bot_info = await bot.get_me()
+        logger.info("✅ Telegram Bot muvaffaqiyatli ishga tushdi: @%s (%s)", bot_info.username, bot_info.first_name)
         await bot.delete_webhook(drop_pending_updates=True)
         await dp.start_polling(bot, handle_signals=False)
     except asyncio.CancelledError:
         logger.info("Telegram Bot polling to'xtatildi (Cancelled).")
     except Exception as exc:
-        logger.exception("Telegram Bot ishida kutilmagan xatolik: %s", exc)
+        logger.exception("❌ Telegram Bot ishida xatolik yuz berdi (token yoki internet aloqasini tekshiring): %s", exc)
     finally:
         await bot.session.close()
         logger.info("Telegram Bot sessiyasi yopildi.")

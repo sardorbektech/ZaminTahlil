@@ -146,7 +146,7 @@
         subtitle: "Ko'p manbali ML modellari yordamida hosildorlikni hisoblash va ta'sir omillari tahlili.",
         heroTitle: "Kutilayotgan Hosildorlik",
         heroInterval: "Ishonch oralig'i: {min} — {max} t/ga",
-        heroTotal: "Jami kutilayotgan hosil: {tons} tonna",
+        heroTotal: "Jami kutilayotgan hosil:",
         fieldLabel: "Dala (Maydon)",
         modelLabel: "ML Modeli",
         cropLabel: "Ekin",

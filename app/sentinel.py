@@ -164,12 +164,29 @@ class SentinelHubClient:
     async def _request(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
         last_error: Exception | None = None
         client = self._get_client()
-        for attempt in range(3):
+        max_attempts = 4
+        for attempt in range(max_attempts):
             try:
                 response = await client.request(method, url, **kwargs)
-                if response.status_code in {429, 500, 502, 503, 504} and attempt < 2:
-                    await asyncio.sleep(0.5 * (2**attempt))
+                if response.status_code == 429 and attempt < max_attempts - 1:
+                    retry_after_hdr = response.headers.get("Retry-After")
+                    try:
+                        wait_time = float(retry_after_hdr) if retry_after_hdr else (1.5 * (2**attempt))
+                    except (ValueError, TypeError):
+                        wait_time = 1.5 * (2**attempt)
+                    wait_time = min(max(wait_time, 1.0), 12.0)
+                    logger.warning(
+                        "Sentinel Hub rate limit (429) url=%s. %.1fs kutilmoqda (urinish %d/%d)...",
+                        url, wait_time, attempt + 1, max_attempts
+                    )
+                    await asyncio.sleep(wait_time)
                     continue
+
+                if response.status_code in {500, 502, 503, 504} and attempt < max_attempts - 1:
+                    wait_time = 1.0 * (2**attempt)
+                    await asyncio.sleep(wait_time)
+                    continue
+
                 if response.status_code == 401:
                     # 401 ni qayta urinib bo'lmaydi — token yangilash yuqori darajada.
                     raise SentinelAuthError(
@@ -188,8 +205,8 @@ class SentinelHubClient:
                 raise
             except (httpx.TimeoutException, httpx.NetworkError, httpx.HTTPStatusError) as exc:
                 last_error = exc
-                if attempt < 2:
-                    await asyncio.sleep(0.5 * (2**attempt))
+                if attempt < max_attempts - 1:
+                    await asyncio.sleep(1.0 * (2**attempt))
         raise SentinelError(f"Sentinel Hub so'rovi bajarilmadi: {last_error!r}") from last_error
 
     async def _token(self) -> str:
