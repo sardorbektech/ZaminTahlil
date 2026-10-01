@@ -169,9 +169,13 @@ class RAGDocumentOut(BaseModel):
 
 class RAGSourceOut(BaseModel):
     document_name: str
-    page_number: int
-    score: float
+    page_number: int | None = None
+    score: float | None = None
     text: str
+    source_type: str = "rag_book"
+    acquired_at: str | None = None
+    product_id: str | None = None
+    cloud_coverage: float | None = None
 
 
 class RAGBookOut(BaseModel):
