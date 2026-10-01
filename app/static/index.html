@@ -22,96 +22,323 @@
       rel="stylesheet"
       href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css"
     />
-    <link rel="stylesheet" href="/styles.css?v=20260908_v4" />
+    <link rel="stylesheet" href="/styles.css?v=20261001_v5" />
+    <style id="auth-gatekeeper-styles">
+      .auth-gk-backdrop {
+        position: fixed;
+        inset: 0;
+        width: 100vw;
+        height: 100vh;
+        background: radial-gradient(circle at 50% 20%, #14532d 0%, #064e3b 40%, #022c22 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 999999;
+        padding: 16px;
+        box-sizing: border-box;
+        overflow-y: auto;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      }
+      .auth-gk-card {
+        width: 100%;
+        max-width: 420px;
+        background: #ffffff;
+        border-radius: 20px;
+        box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1);
+        padding: 32px 28px;
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        animation: authCardIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      }
+      @keyframes authCardIn {
+        from { opacity: 0; transform: translateY(16px) scale(0.97); }
+        to { opacity: 1; transform: translateY(0) scale(1); }
+      }
+      .auth-gk-brand {
+        text-align: center;
+        margin-bottom: 22px;
+      }
+      .auth-gk-logo-wrap {
+        width: 64px;
+        height: 64px;
+        margin: 0 auto 12px;
+        border-radius: 16px;
+        background: #f0fdf4;
+        border: 1px solid #bbf7d0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        box-shadow: 0 4px 12px rgba(22, 101, 52, 0.12);
+      }
+      .auth-gk-logo-img {
+        width: 52px;
+        height: 52px;
+        object-fit: contain;
+        display: block;
+      }
+      .auth-gk-title {
+        font-size: 1.45rem;
+        font-weight: 800;
+        color: #0f172a;
+        margin: 0 0 4px;
+        letter-spacing: -0.02em;
+      }
+      .auth-gk-sub {
+        font-size: 0.84rem;
+        color: #64748b;
+        margin: 0;
+        line-height: 1.4;
+      }
+      .auth-gk-tabs {
+        display: flex;
+        background: #f1f5f9;
+        padding: 4px;
+        border-radius: 12px;
+        margin-bottom: 22px;
+        gap: 4px;
+      }
+      .auth-gk-tab-btn {
+        flex: 1;
+        padding: 9px 12px;
+        border: none;
+        background: transparent;
+        border-radius: 9px;
+        font-size: 0.88rem;
+        font-weight: 600;
+        color: #64748b;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+      }
+      .auth-gk-tab-btn.active {
+        background: #ffffff;
+        color: #166534;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+      }
+      .auth-gk-form-group {
+        margin-bottom: 16px;
+      }
+      .auth-gk-label {
+        display: block;
+        font-size: 0.82rem;
+        font-weight: 600;
+        color: #334155;
+        margin-bottom: 6px;
+      }
+      .auth-gk-input-box {
+        position: relative;
+        display: flex;
+        align-items: center;
+      }
+      .auth-gk-input-icon {
+        position: absolute;
+        left: 12px;
+        font-size: 1rem;
+        color: #94a3b8;
+        pointer-events: none;
+        line-height: 1;
+      }
+      .auth-gk-input {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 10px 14px 10px 38px;
+        font-size: 0.9rem;
+        color: #0f172a;
+        background: #f8fafc;
+        border: 1px solid #cbd5e1;
+        border-radius: 10px;
+        outline: none;
+        transition: all 0.2s ease;
+      }
+      .auth-gk-input:focus {
+        background: #ffffff;
+        border-color: #16a34a;
+        box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.15);
+      }
+      .auth-gk-input-has-eye {
+        padding-right: 38px;
+      }
+      .auth-gk-eye-btn {
+        position: absolute;
+        right: 10px;
+        background: none;
+        border: none;
+        cursor: pointer;
+        font-size: 1rem;
+        color: #64748b;
+        padding: 4px;
+        line-height: 1;
+      }
+      .auth-gk-eye-btn:hover {
+        color: #0f172a;
+      }
+      .auth-gk-alert {
+        display: none;
+        padding: 10px 12px;
+        background: #fef2f2;
+        border: 1px solid #fecaca;
+        border-radius: 8px;
+        color: #b91c1c;
+        font-size: 0.82rem;
+        font-weight: 500;
+        margin-bottom: 16px;
+        line-height: 1.4;
+      }
+      .auth-gk-btn-submit {
+        width: 100%;
+        padding: 12px;
+        background: linear-gradient(135deg, #166534 0%, #15803d 100%);
+        color: #ffffff;
+        border: none;
+        border-radius: 10px;
+        font-size: 0.92rem;
+        font-weight: 700;
+        cursor: pointer;
+        box-shadow: 0 4px 12px rgba(22, 101, 52, 0.25);
+        transition: all 0.2s ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+      }
+      .auth-gk-btn-submit:hover {
+        background: linear-gradient(135deg, #14532d 0%, #166534 100%);
+        transform: translateY(-1px);
+        box-shadow: 0 6px 16px rgba(22, 101, 52, 0.3);
+      }
+      .auth-gk-btn-submit:active {
+        transform: translateY(0);
+      }
+      .auth-gk-btn-submit:disabled {
+        opacity: 0.7;
+        cursor: not-allowed;
+        transform: none;
+      }
+      .auth-gk-footer-hint {
+        margin-top: 18px;
+        text-align: center;
+        font-size: 0.78rem;
+        color: #94a3b8;
+      }
+    </style>
   </head>
   <body>
     <!-- 0. FULL-SCREEN AUTH GATEWAY (LOGIN/REGISTER SCREEN - VISIBLE BEFORE LOGIN) -->
-    <div id="auth-gatekeeper" class="auth-gatekeeper-overlay">
-      <div class="auth-gatekeeper-box">
-        <div class="auth-gatekeeper-header">
-          <img src="/logo.png" alt="ZaminTahlil Logo" class="auth-gatekeeper-logo" />
-          <h1 class="auth-gatekeeper-title">ZaminTahlil</h1>
-          <p class="auth-gatekeeper-sub">Aqlli Qishloq Xo'jaligi Monitoringi va Tahlil Platformasi</p>
+    <div id="auth-gatekeeper" class="auth-gk-backdrop">
+      <div class="auth-gk-card">
+        <div class="auth-gk-brand">
+          <div class="auth-gk-logo-wrap">
+            <img src="/logo.png" alt="ZaminTahlil" class="auth-gk-logo-img" />
+          </div>
+          <h1 class="auth-gk-title">ZaminTahlil</h1>
+          <p class="auth-gk-sub">Aqlli Qishloq Xo'jaligi Monitoringi</p>
         </div>
 
-        <div class="auth-gatekeeper-tabs">
-          <button type="button" class="auth-gatekeeper-tab active" id="gk-tab-login">Kirish</button>
-          <button type="button" class="auth-gatekeeper-tab" id="gk-tab-register">Ro'yxatdan o'tish</button>
+        <div class="auth-gk-tabs">
+          <button type="button" class="auth-gk-tab-btn active" id="gk-tab-login">
+            <span>🔑</span> <span>Kirish</span>
+          </button>
+          <button type="button" class="auth-gk-tab-btn" id="gk-tab-register">
+            <span>✨</span> <span>Ro'yxatdan o'tish</span>
+          </button>
         </div>
 
         <!-- Login Form -->
-        <form id="gk-form-login" class="auth-form">
-          <div class="form-group" style="margin-bottom: 16px;">
-            <label class="form-label" for="gk-login-username" style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 0.86rem;">Foydalanuvchi nomi</label>
-            <input
-              type="text"
-              class="form-control"
-              id="gk-login-username"
-              required
-              placeholder="masalan: ali_fermer"
-              autocomplete="username"
-              style="width: 100%; padding: 10px 14px; border-radius: var(--radius-md); border: 1px solid var(--color-border);"
-            />
+        <form id="gk-form-login">
+          <div class="auth-gk-form-group">
+            <label class="auth-gk-label" for="gk-login-username">Foydalanuvchi nomi</label>
+            <div class="auth-gk-input-box">
+              <span class="auth-gk-input-icon">👤</span>
+              <input
+                type="text"
+                class="auth-gk-input"
+                id="gk-login-username"
+                required
+                placeholder="masalan: ali_fermer"
+                autocomplete="username"
+              />
+            </div>
           </div>
-          <div class="form-group" style="margin-bottom: 16px;">
-            <label class="form-label" for="gk-login-password" style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 0.86rem;">Parol</label>
-            <input
-              type="password"
-              class="form-control"
-              id="gk-login-password"
-              required
-              placeholder="Parolingizni kiriting"
-              autocomplete="current-password"
-              style="width: 100%; padding: 10px 14px; border-radius: var(--radius-md); border: 1px solid var(--color-border);"
-            />
+          <div class="auth-gk-form-group">
+            <label class="auth-gk-label" for="gk-login-password">Parol</label>
+            <div class="auth-gk-input-box">
+              <span class="auth-gk-input-icon">🔒</span>
+              <input
+                type="password"
+                class="auth-gk-input auth-gk-input-has-eye"
+                id="gk-login-password"
+                required
+                placeholder="Parolingizni kiriting"
+                autocomplete="current-password"
+              />
+              <button type="button" class="auth-gk-eye-btn" id="btn-toggle-login-pwd" title="Parolni ko'rsatish">👁️</button>
+            </div>
           </div>
-          <div id="gk-login-error" style="display: none; color: var(--color-danger); font-size: 0.85rem; margin-bottom: 14px; background: var(--color-danger-bg); padding: 10px 14px; border-radius: var(--radius-sm); border: 1px solid #fca5a5;"></div>
-          <button type="submit" class="btn btn-primary" id="btn-gk-login" style="width: 100%; padding: 12px; font-size: 0.95rem; font-weight: 700; border-radius: var(--radius-md);">
-            Tizimga kirish
+          <div id="gk-login-error" class="auth-gk-alert"></div>
+          <button type="submit" class="auth-gk-btn-submit" id="btn-gk-login">
+            <span>Tizimga kirish</span> <span>➔</span>
           </button>
+          <div class="auth-gk-footer-hint">
+            Hisobingiz yo'qmi? Yuqoridagi "Ro'yxatdan o'tish" tugmasini bosing.
+          </div>
         </form>
 
         <!-- Register Form -->
-        <form id="gk-form-register" class="auth-form" style="display: none;">
-          <div class="form-group" style="margin-bottom: 16px;">
-            <label class="form-label" for="gk-reg-fullname" style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 0.86rem;">To'liq ism (ixtiyoriy)</label>
-            <input
-              type="text"
-              class="form-control"
-              id="gk-reg-fullname"
-              placeholder="Ali Valiyev"
-              autocomplete="name"
-              style="width: 100%; padding: 10px 14px; border-radius: var(--radius-md); border: 1px solid var(--color-border);"
-            />
+        <form id="gk-form-register" style="display: none;">
+          <div class="auth-gk-form-group">
+            <label class="auth-gk-label" for="gk-reg-fullname">To'liq ism (ixtiyoriy)</label>
+            <div class="auth-gk-input-box">
+              <span class="auth-gk-input-icon">📝</span>
+              <input
+                type="text"
+                class="auth-gk-input"
+                id="gk-reg-fullname"
+                placeholder="Ali Valiyev"
+                autocomplete="name"
+              />
+            </div>
           </div>
-          <div class="form-group" style="margin-bottom: 16px;">
-            <label class="form-label" for="gk-reg-username" style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 0.86rem;">Foydalanuvchi nomi</label>
-            <input
-              type="text"
-              class="form-control"
-              id="gk-reg-username"
-              required
-              placeholder="kamida 3 ta belgi"
-              autocomplete="username"
-              style="width: 100%; padding: 10px 14px; border-radius: var(--radius-md); border: 1px solid var(--color-border);"
-            />
+          <div class="auth-gk-form-group">
+            <label class="auth-gk-label" for="gk-reg-username">Foydalanuvchi nomi</label>
+            <div class="auth-gk-input-box">
+              <span class="auth-gk-input-icon">👤</span>
+              <input
+                type="text"
+                class="auth-gk-input"
+                id="gk-reg-username"
+                required
+                placeholder="kamida 3 ta belgi"
+                autocomplete="username"
+              />
+            </div>
           </div>
-          <div class="form-group" style="margin-bottom: 16px;">
-            <label class="form-label" for="gk-reg-password" style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 0.86rem;">Parol</label>
-            <input
-              type="password"
-              class="form-control"
-              id="gk-reg-password"
-              required
-              placeholder="kamida 6 ta belgi"
-              autocomplete="new-password"
-              style="width: 100%; padding: 10px 14px; border-radius: var(--radius-md); border: 1px solid var(--color-border);"
-            />
+          <div class="auth-gk-form-group">
+            <label class="auth-gk-label" for="gk-reg-password">Parol</label>
+            <div class="auth-gk-input-box">
+              <span class="auth-gk-input-icon">🔒</span>
+              <input
+                type="password"
+                class="auth-gk-input auth-gk-input-has-eye"
+                id="gk-reg-password"
+                required
+                placeholder="kamida 6 ta belgi"
+                autocomplete="new-password"
+              />
+              <button type="button" class="auth-gk-eye-btn" id="btn-toggle-reg-pwd" title="Parolni ko'rsatish">👁️</button>
+            </div>
           </div>
-          <div id="gk-reg-error" style="display: none; color: var(--color-danger); font-size: 0.85rem; margin-bottom: 14px; background: var(--color-danger-bg); padding: 10px 14px; border-radius: var(--radius-sm); border: 1px solid #fca5a5;"></div>
-          <button type="submit" class="btn btn-primary" id="btn-gk-register" style="width: 100%; padding: 12px; font-size: 0.95rem; font-weight: 700; border-radius: var(--radius-md);">
-            Ro'yxatdan o'tish
+          <div id="gk-reg-error" class="auth-gk-alert"></div>
+          <button type="submit" class="auth-gk-btn-submit" id="btn-gk-register">
+            <span>Hisob yaratish</span> <span>➔</span>
           </button>
+          <div class="auth-gk-footer-hint">
+            Ro'yxatdan o'tgach, barcha Sentinel-2 tahlillaringiz xavfsiz saqlanadi.
+          </div>
         </form>
       </div>
     </div>

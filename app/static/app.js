@@ -706,6 +706,7 @@
 
   // Load All Fields
   async function loadFields() {
+    if (!state.currentUser) return;
     try {
       const fields = await api.getFields();
       state.fields = fields;
@@ -1876,6 +1877,21 @@
 
     tabLogin?.addEventListener("click", () => switchTab("login"));
     tabRegister?.addEventListener("click", () => switchTab("register"));
+
+    // Password visibility toggle helpers
+    function setupPasswordToggle(btnId, inputId) {
+      const btn = document.getElementById(btnId);
+      const input = document.getElementById(inputId);
+      if (!btn || !input) return;
+      btn.addEventListener("click", () => {
+        const isPassword = input.type === "password";
+        input.type = isPassword ? "text" : "password";
+        btn.textContent = isPassword ? "🙈" : "👁️";
+        btn.title = isPassword ? "Parolni yashirish" : "Parolni ko'rsatish";
+      });
+    }
+    setupPasswordToggle("btn-toggle-login-pwd", "gk-login-password");
+    setupPasswordToggle("btn-toggle-reg-pwd", "gk-reg-password");
 
     // Gatekeeper Login submit
     formLogin?.addEventListener("submit", async (e) => {
