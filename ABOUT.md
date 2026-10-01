@@ -284,31 +284,33 @@ Loyiha Google Cloud VM xotirasini tejash uchun faqat eng zaruriy 20 ta toza kutu
 
 ---
 
-## 6. Ma’lumotlar Bazasi Sxemasi (Schema v8)
+## 6. Ma’lumotlar Bazasi Sxemasi (Schema v9)
 
-Loyiha quyidagi 12 ta jadvaldan iborat relying bazaga ega:
+Loyiha quyidagi 13 ta jadvaldan iborat relying bazaga ega:
 
 1. **`users`**: Foydalanuvchilar (`id`, `username` UNIQUE, `password_hash`, `full_name`, `telegram_id` UNIQUE, `created_at`).
-2. **`fields`**: `id`, `user_id` (FOREIGN KEY -> users.id), `public_id` (8 xonali ID), `geometry_json`, `geometry_hash` (UNIQUE), `area_hectares`, `crop_name`, `planted_on`, `growth_stage`, `created_at`, `updated_at`.
-3. **`acquisitions`**: Sentinel-2 tasvirlari sanasi, mahsulot ID, reviziya kaliti, bulutlilik ko‘rsatkichi.
-4. **`index_values`**: Har bir tasvir va indeks bo‘yicha hisoblangan `mean_value`, `min_value`, `median_value`, `max_value`.
-5. **`artifacts`**: Qatlamlarning PNG render tasvirlari, koordinata bounding boxlari (`bbox_json`), kenglik va balandligi.
-6. **`recommendations`**: AI va ekspert agronomik tavsiyalari (Qizil, Sariq, Yashil guruhlar va anomaliya hisoboti).
-7. **`field_chat_messages`**: Dala yozishmalari tarixi (role, content, `rag_sources_json`, `rag_strategy`, `rag_source_title`, vaqti).
-8. **`field_chat_summaries`**: Dala muloqotlarining lo‘nda, qisqa xulosasi (Summary) va xabarlar soni.
-9. **`rag_documents`**: Bazaga kiritilgan PDF kitoblar (`is_active`, `embedding_model`, `embedding_dim`, nomi, fayl yo‘li, sahifalar va bo‘laklar soni).
-10. **`rag_chunks`**: Kitoblardan ajratilgan matn bo‘laklari va 768-o‘lchamli vektorlar (`embedding BLOB`).
-11. **`yield_predictions`**: Hosildorlik bashorati tarixi (model, $t/ga$, jami tonna, top parametrlar, fenologiya, `data_sources_json`).
-12. **`telegram_users`**: Telegram foydalanuvchilarining joriy tanlangan faol dalasi (`chat_id`, `active_field_id`, vaqti).
+2. **`sessions`**: SQLite sessiyalari (`id`, `token` UNIQUE, `user_id` FOREIGN KEY -> users.id, `created_at`).
+3. **`fields`**: `id`, `user_id` (FOREIGN KEY -> users.id), `public_id` (8 xonali ID), `geometry_json`, `geometry_hash` (UNIQUE), `area_hectares`, `crop_name`, `planted_on`, `growth_stage`, `created_at`, `updated_at`.
+4. **`acquisitions`**: Sentinel-2 tasvirlari sanasi, mahsulot ID, reviziya kaliti, bulutlilik ko‘rsatkichi.
+5. **`index_values`**: Har bir tasvir va indeks bo‘yicha hisoblangan `mean_value`, `min_value`, `median_value`, `max_value`.
+6. **`artifacts`**: Qatlamlarning PNG render tasvirlari, koordinata bounding boxlari (`bbox_json`), kenglik va balandligi.
+7. **`recommendations`**: AI va ekspert agronomik tavsiyalari (Qizil, Sariq, Yashil guruhlar va anomaliya hisoboti).
+8. **`field_chat_messages`**: Dala yozishmalari tarixi (role, content, `rag_sources_json`, `rag_strategy`, `rag_source_title`, vaqti).
+9. **`field_chat_summaries`**: Dala muloqotlarining lo‘nda, qisqa xulosasi (Summary) va xabarlar soni.
+10. **`rag_documents`**: Bazaga kiritilgan PDF kitoblar (`is_active`, `embedding_model`, `embedding_dim`, nomi, fayl yo‘li, sahifalar va bo‘laklar soni).
+11. **`rag_chunks`**: Kitoblardan ajratilgan matn bo‘laklari va 768-o‘lchamli vektorlar (`embedding BLOB`).
+12. **`yield_predictions`**: Hosildorlik bashorati tarixi (model, $t/ga$, jami tonna, top parametrlar, fenologiya, `data_sources_json`).
+13. **`telegram_users`**: Telegram foydalanuvchilarining joriy tanlangan faol dalasi (`chat_id`, `active_field_id`, vaqti).
 
 ---
 
 ## 7. API Spetsifikatsiyasi (REST Endpoints)
 
-### Foydalanuvchi Autentifikatsiyasi (JWT)
-- `POST /api/auth/register` — Yangi foydalanuvchini ro'yxatdan o'tkazish (`username`, `password`, `full_name`). Yangi JWT access token qaytaradi.
-- `POST /api/auth/login` — Tizimga kirish (`username`, `password`). JWT access token va foydalanuvchi ma'lumotlarini qaytaradi.
-- `GET /api/auth/me` — Joriy kirgan foydalanuvchi profilini olish (Bearer Token talab qiladi).
+### Foydalanuvchi Autentifikatsiyasi (SQLite Sessions)
+- `POST /api/auth/register` — Yangi foydalanuvchini ro'yxatdan o'tkazish (`username`, `password`, `full_name`). SQLite sessiya tokenini qaytaradi.
+- `POST /api/auth/login` — Tizimga kirish (`username`, `password`). SQLite sessiya tokeni va foydalanuvchi ma'lumotlarini qaytaradi.
+- `POST /api/auth/logout` — Joriy sessiyani bazadan o'chirish.
+- `GET /api/auth/me` — Joriy kirgan foydalanuvchi profilini olish (Session Bearer Token talab qiladi).
 
 ### Dala Boshqaruvi
 - `POST /api/fields` — Yangi dala qo‘shish (GeoJSON polygon, ekin nomi, ekilgan sana, rivojlanish bosqichi. Joriy foydalanuvchi `user_id` bilan bog'lanadi. Dublikat bo‘lsa: 409).

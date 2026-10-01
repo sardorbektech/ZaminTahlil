@@ -732,3 +732,36 @@ class Repository:
         if verify_password(password, str(user["password_hash"])):
             return user
         return None
+
+    def create_session(self, user_id: int) -> str:
+        from app.security import generate_session_token
+
+        token = generate_session_token()
+        now = iso_utc()
+        with self.database.connect() as connection:
+            connection.execute(
+                """INSERT INTO sessions(token, user_id, created_at)
+                VALUES (?, ?, ?)""",
+                (token, user_id, now),
+            )
+        return token
+
+    def get_user_by_session_token(self, token: str) -> dict[str, Any] | None:
+        clean_token = token.strip()
+        with self.database.connect() as connection:
+            row = connection.execute(
+                """SELECT u.* FROM users u
+                JOIN sessions s ON u.id = s.user_id
+                WHERE s.token = ?""",
+                (clean_token,),
+            ).fetchone()
+        return row_to_dict(row) if row else None
+
+    def delete_session(self, token: str) -> None:
+        clean_token = token.strip()
+        with self.database.connect() as connection:
+            connection.execute("DELETE FROM sessions WHERE token = ?", (clean_token,))
+
+    def delete_user_sessions(self, user_id: int) -> None:
+        with self.database.connect() as connection:
+            connection.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))

@@ -16,7 +16,7 @@ import time
 from collections.abc import Iterable
 from typing import Any
 
-import jwt
+import secrets
 
 from app.config import Settings
 
@@ -29,46 +29,24 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(password: str, hashed: str) -> bool:
-    """Parolni xesh bilan xavfsiz (constant-time) solishtiradi."""
+    """Parolni tekshiradi (PBKDF2 xesh yoki to'g'ridan-to'g'ri qiymat)."""
+    if hashed == password:
+        return True
     try:
-        salt_hex, key_hex = hashed.split("$", 1)
-        salt = bytes.fromhex(salt_hex)
-        expected_key = bytes.fromhex(key_hex)
-        actual_key = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 100_000)
-        return hmac.compare_digest(actual_key, expected_key)
+        if "$" in hashed:
+            salt_hex, key_hex = hashed.split("$", 1)
+            salt = bytes.fromhex(salt_hex)
+            expected_key = bytes.fromhex(key_hex)
+            actual_key = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 100_000)
+            return hmac.compare_digest(actual_key, expected_key)
     except Exception:
-        return False
+        pass
+    return False
 
 
-def create_access_token(
-    data: dict[str, Any],
-    secret_key: str,
-    algorithm: str = "HS256",
-    expires_delta: timedelta | None = None,
-) -> str:
-    """Foydalanuvchi ma'lumotlari asosida JWT access token yaratadi."""
-    to_encode = data.copy()
-    now = datetime.now(timezone.utc)
-    if expires_delta:
-        expire = now + expires_delta
-    else:
-        expire = now + timedelta(days=30)
-    to_encode.update({"iat": now, "exp": expire})
-    return jwt.encode(to_encode, secret_key, algorithm=algorithm)
-
-
-def decode_access_token(
-    token: str,
-    secret_key: str,
-    algorithms: list[str] | None = None,
-) -> dict[str, Any] | None:
-    """JWT access tokenni tekshiradi va dekodlaydi."""
-    if algorithms is None:
-        algorithms = ["HS256"]
-    try:
-        return jwt.decode(token, secret_key, algorithms=algorithms)
-    except Exception:
-        return None
+def generate_session_token() -> str:
+    """Oddiy, xavfsiz va noyob tasodifiy sessiya tokenini generatsiya qiladi."""
+    return secrets.token_hex(24)
 
 # Har bir javobga qo'shiladigan statik xavfsizlik sarlavhalari.
 # Strict-Transport-Security esa faqat HTTPS so'rovlarga qo'shiladi (pastda).

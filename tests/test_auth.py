@@ -124,3 +124,17 @@ async def test_auth_registration_login_and_field_isolation(
         )
         assert list2.status_code == 200
         assert len(list2.json()) == 0
+
+        # 10. Logout User 1
+        logout_resp = await client.post(
+            "/api/auth/logout",
+            headers={"Authorization": f"Bearer {token1}"},
+        )
+        assert logout_resp.status_code == 200
+
+        # 11. After logout, session is invalidated in SQLite -> 401 Unauthorized
+        me_after_logout = await client.get(
+            "/api/auth/me",
+            headers={"Authorization": f"Bearer {token1}"},
+        )
+        assert me_after_logout.status_code == 401

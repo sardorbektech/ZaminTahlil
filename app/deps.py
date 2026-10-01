@@ -46,24 +46,20 @@ def detail(settings: Settings, exc: Exception, generic: str) -> str:
 
 
 def get_current_user_optional(request: Request) -> dict[str, Any] | None:
+    token: str | None = None
     auth_header = request.headers.get("Authorization")
-    if not auth_header or not auth_header.startswith("Bearer "):
-        return None
-    token = auth_header.split(" ", 1)[1].strip()
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ", 1)[1].strip()
+    elif request.headers.get("X-Session-Token"):
+        token = request.headers.get("X-Session-Token", "").strip()
+    elif "session_token" in request.cookies:
+        token = request.cookies.get("session_token", "").strip()
+
     if not token:
         return None
-    settings = get_settings(request)
-    from app.security import decode_access_token
 
-    payload = decode_access_token(token, settings.jwt_secret_key)
-    if not payload or "sub" not in payload:
-        return None
     repo = get_repository(request)
-    try:
-        user_id = int(payload["sub"])
-        return repo.get_user_by_id(user_id)
-    except Exception:
-        return None
+    return repo.get_user_by_session_token(token)
 
 
 def get_current_user(request: Request) -> dict[str, Any]:
@@ -73,7 +69,7 @@ def get_current_user(request: Request) -> dict[str, Any]:
 
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Tizimga kirish talab qilinadi (token yaroqsiz yoki muddati o'tgan).",
+            detail="Tizimga kirish talab qilinadi. Iltimos, avval tizimga kiring.",
             headers={"WWW-Authenticate": "Bearer"},
         )
     return user

@@ -1844,74 +1844,45 @@
     });
   }
 
-  // Authentication & User Session Management
+  // Authentication & Gatekeeper Management (Login Wall)
   function initAuth() {
-    const modal = document.getElementById("modal-auth");
-    const btnOpen = document.getElementById("btn-open-auth");
-    const btnClose = document.getElementById("btn-close-auth-modal");
-    const tabLogin = document.getElementById("tab-auth-login");
-    const tabRegister = document.getElementById("tab-auth-register");
-    const title = document.getElementById("auth-modal-title");
-    const formLogin = document.getElementById("form-auth-login");
-    const formRegister = document.getElementById("form-auth-register");
-    const loginError = document.getElementById("login-error-msg");
-    const regError = document.getElementById("reg-error-msg");
+    const gatekeeper = document.getElementById("auth-gatekeeper");
+    const appContainer = document.getElementById("app-container");
+    const tabLogin = document.getElementById("gk-tab-login");
+    const tabRegister = document.getElementById("gk-tab-register");
+    const formLogin = document.getElementById("gk-form-login");
+    const formRegister = document.getElementById("gk-form-register");
+    const loginError = document.getElementById("gk-login-error");
+    const regError = document.getElementById("gk-reg-error");
     const btnLogout = document.getElementById("btn-logout");
-
-    function openModal(mode = "login") {
-      if (!modal) return;
-      modal.style.display = "flex";
-      switchTab(mode);
-    }
-
-    function closeModal() {
-      if (!modal) return;
-      modal.style.display = "none";
-      if (loginError) loginError.style.display = "none";
-      if (regError) regError.style.display = "none";
-    }
+    const userProfilePill = document.getElementById("user-profile-pill");
+    const userDisplayName = document.getElementById("user-display-name");
 
     function switchTab(mode) {
       if (mode === "login") {
         tabLogin?.classList.add("active");
-        if (tabLogin) tabLogin.style.borderBottomColor = "var(--color-primary)";
-        if (tabLogin) tabLogin.style.color = "var(--color-primary)";
         tabRegister?.classList.remove("active");
-        if (tabRegister) tabRegister.style.borderBottomColor = "transparent";
-        if (tabRegister) tabRegister.style.color = "var(--color-text-muted)";
-        if (title) title.textContent = "Tizimga kirish";
         if (formLogin) formLogin.style.display = "block";
         if (formRegister) formRegister.style.display = "none";
       } else {
         tabRegister?.classList.add("active");
-        if (tabRegister) tabRegister.style.borderBottomColor = "var(--color-primary)";
-        if (tabRegister) tabRegister.style.color = "var(--color-primary)";
         tabLogin?.classList.remove("active");
-        if (tabLogin) tabLogin.style.borderBottomColor = "transparent";
-        if (tabLogin) tabLogin.style.color = "var(--color-text-muted)";
-        if (title) title.textContent = "Ro'yxatdan o'tish";
-        if (formLogin) formLogin.style.display = "none";
         if (formRegister) formRegister.style.display = "block";
+        if (formLogin) formLogin.style.display = "none";
       }
       if (loginError) loginError.style.display = "none";
       if (regError) regError.style.display = "none";
     }
 
-    btnOpen?.addEventListener("click", () => openModal("login"));
-    btnClose?.addEventListener("click", closeModal);
-    modal?.addEventListener("click", (e) => {
-      if (e.target === modal) closeModal();
-    });
-
     tabLogin?.addEventListener("click", () => switchTab("login"));
     tabRegister?.addEventListener("click", () => switchTab("register"));
 
-    // Login submit
+    // Gatekeeper Login submit
     formLogin?.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const usernameInput = document.getElementById("login-username");
-      const passwordInput = document.getElementById("login-password");
-      const btnSubmit = document.getElementById("btn-submit-login");
+      const usernameInput = document.getElementById("gk-login-username");
+      const passwordInput = document.getElementById("gk-login-password");
+      const btnSubmit = document.getElementById("btn-gk-login");
 
       const username = usernameInput?.value.trim();
       const password = passwordInput?.value;
@@ -1919,19 +1890,18 @@
 
       if (btnSubmit) {
         btnSubmit.disabled = true;
-        btnSubmit.textContent = "Kirilmoqda...";
+        btnSubmit.textContent = "Tekshirilmoqda...";
       }
       if (loginError) loginError.style.display = "none";
 
       try {
         const res = await api.login({ username, password });
-        localStorage.setItem("zamintahlil_token", res.access_token);
+        localStorage.setItem("zamintahlil_session", res.token);
+        localStorage.setItem("zamintahlil_token", res.token);
         state.currentUser = res.user;
         showToast(`Xush kelibsiz, ${res.user.full_name || res.user.username}!`, "success");
-        closeModal();
         formLogin.reset();
-        await updateAuthUI();
-        await loadFields();
+        await showAppView();
       } catch (err) {
         if (loginError) {
           loginError.textContent = err.message || "Kirishda xatolik yuz berdi";
@@ -1940,18 +1910,18 @@
       } finally {
         if (btnSubmit) {
           btnSubmit.disabled = false;
-          btnSubmit.textContent = "Kirish";
+          btnSubmit.textContent = "Tizimga kirish";
         }
       }
     });
 
-    // Register submit
+    // Gatekeeper Register submit
     formRegister?.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const fullNameInput = document.getElementById("reg-fullname");
-      const usernameInput = document.getElementById("reg-username");
-      const passwordInput = document.getElementById("reg-password");
-      const btnSubmit = document.getElementById("btn-submit-reg");
+      const fullNameInput = document.getElementById("gk-reg-fullname");
+      const usernameInput = document.getElementById("gk-reg-username");
+      const passwordInput = document.getElementById("gk-reg-password");
+      const btnSubmit = document.getElementById("btn-gk-register");
 
       const full_name = fullNameInput?.value.trim() || null;
       const username = usernameInput?.value.trim();
@@ -1966,13 +1936,12 @@
 
       try {
         const res = await api.register({ username, password, full_name });
-        localStorage.setItem("zamintahlil_token", res.access_token);
+        localStorage.setItem("zamintahlil_session", res.token);
+        localStorage.setItem("zamintahlil_token", res.token);
         state.currentUser = res.user;
         showToast("Ro'yxatdan o'tish muvaffaqiyatli yakunlandi!", "success");
-        closeModal();
         formRegister.reset();
-        await updateAuthUI();
-        await loadFields();
+        await showAppView();
       } catch (err) {
         if (regError) {
           regError.textContent = err.message || "Ro'yxatdan o'tishda xatolik yuz berdi";
@@ -1988,11 +1957,16 @@
 
     // Logout click
     btnLogout?.addEventListener("click", async () => {
+      try {
+        await api.logout();
+      } catch {
+        // Sessiya o'chirilishi xato bersa ham davom etamiz
+      }
+      localStorage.removeItem("zamintahlil_session");
       localStorage.removeItem("zamintahlil_token");
       state.currentUser = null;
       showToast("Tizimdan chiqdingiz", "info");
-      await updateAuthUI();
-      await loadFields();
+      showGatekeeperView();
     });
 
     // Dismiss Cloud Warning Banner
@@ -2002,33 +1976,64 @@
     });
   }
 
-  // Update Auth Profile UI
-  async function updateAuthUI() {
-    const authBtn = document.getElementById("btn-open-auth");
-    const userPill = document.getElementById("user-profile-pill");
-    const userNameEl = document.getElementById("user-display-name");
+  // Show full application when logged in
+  async function showAppView() {
+    const gatekeeper = document.getElementById("auth-gatekeeper");
+    const appContainer = document.getElementById("app-container");
+    const userProfilePill = document.getElementById("user-profile-pill");
+    const userDisplayName = document.getElementById("user-display-name");
 
-    const token = localStorage.getItem("zamintahlil_token");
+    if (gatekeeper) gatekeeper.style.display = "none";
+    if (appContainer) appContainer.style.display = "flex";
+    if (userProfilePill) userProfilePill.style.display = "flex";
+    if (userDisplayName) {
+      userDisplayName.textContent = state.currentUser?.full_name || state.currentUser?.username || "Foydalanuvchi";
+    }
+
+    if (state.maps.main) {
+      setTimeout(() => {
+        state.maps.main.invalidateSize();
+      }, 100);
+    }
+    await loadFields();
+  }
+
+  // Show gatekeeper when not logged in (blocks entire app)
+  function showGatekeeperView() {
+    const gatekeeper = document.getElementById("auth-gatekeeper");
+    const appContainer = document.getElementById("app-container");
+    const userProfilePill = document.getElementById("user-profile-pill");
+
+    if (appContainer) appContainer.style.display = "none";
+    if (gatekeeper) gatekeeper.style.display = "flex";
+    if (userProfilePill) userProfilePill.style.display = "none";
+
+    state.fields = [];
+    state.selectedField = null;
+    state.acquisitions = [];
+    state.selectedAcquisition = null;
+  }
+
+  // Check auth status on app start
+  async function checkAuthStatus() {
+    const token = localStorage.getItem("zamintahlil_session") || localStorage.getItem("zamintahlil_token");
     if (!token) {
       state.currentUser = null;
-      if (authBtn) authBtn.style.display = "flex";
-      if (userPill) userPill.style.display = "none";
-      return;
+      showGatekeeperView();
+      return false;
     }
 
     try {
       const user = await api.getMe();
       state.currentUser = user;
-      if (authBtn) authBtn.style.display = "none";
-      if (userPill) {
-        userPill.style.display = "flex";
-        if (userNameEl) userNameEl.textContent = user.full_name || user.username;
-      }
+      await showAppView();
+      return true;
     } catch {
+      localStorage.removeItem("zamintahlil_session");
       localStorage.removeItem("zamintahlil_token");
       state.currentUser = null;
-      if (authBtn) authBtn.style.display = "flex";
-      if (userPill) userPill.style.display = "none";
+      showGatekeeperView();
+      return false;
     }
   }
 
@@ -2041,8 +2046,7 @@
     initPurgeSystem();
     initAuth();
     updateLayerChipsState(false);
-    await updateAuthUI();
-    await loadFields();
+    await checkAuthStatus();
   }
 
   window.addEventListener("DOMContentLoaded", init);

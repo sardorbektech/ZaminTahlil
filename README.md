@@ -180,7 +180,8 @@ python -m pytest -q
 ## 🔐 Foydalanuvchi Autentifikatsiyasi va Ma'lumotlar Izolyatsiyasi
 
 Platformada to'liq ko'p foydalanuvchili (multi-tenant) xavfsizlik tizimi joriy qilingan:
-- **Web Platformada Ro'yxatdan o'tish va Kirish**: Foydalanuvchilar o'z `username` va `password`lari orqali ro'yxatdan o'tadi va tizimga kiradi. JWT (JSON Web Token) orqali seans saqlanadi.
+- **Majburiy Kirish Darvozasi (Auth Gatekeeper)**: Foydalanuvchi tizimga login qilmasdan turib veb-platformaning ichki qismiga (dashboard, xaritalar, dalalar) mutlaqo kira olmaydi. Sahifa ochilganda to'liq ekranli Kirish / Ro'yxatdan o'tish ekrani kutib oladi.
+- **Oddiy SQLite Baza Sessiyalari (JWT talab qilinmaydi)**: Barcha login va parollar, shuningdek sessiyalar to'g'ridan-to'g'ri SQLite ma'lumotlar bazasida (`users` va `sessions` jadvallari) xavfsiz saqlanadi. JWT kutubxonasi talab etilmaydi.
 - **Dala Izolyatsiyasi**: Har bir foydalanuvchi faqat o'zi yaratgan dalalar, tahlillar va AI tavsiyalariga ega bo'ladi.
 - **Telegram Bot Gatekeeper**:
   - Telegram botda to'g'ridan-to'g'ri ro'yxatdan o'tish **yo'q** (xavfsizlik va ma'lumotlar yaxlitligi uchun foydalanuvchi avval veb-platformada ro'yxatdan o'tishi kerak).
@@ -256,7 +257,7 @@ ZaminTahlil/
 │   ├── analysis.py             # Sentinel-2 multispektral tahlil xizmati
 │   ├── config.py               # Pydantic Settings konfiguratsiyasi
 │   ├── constants.py            # Indekslar, qatlamlar va tizim konstantalari
-│   ├── db.py                   # SQLite jadvallar sxemasi (Schema v8, foydalanuvchilar, WAL)
+│   ├── db.py                   # SQLite jadvallar sxemasi (Schema v9, users, sessions, WAL)
 │   ├── geometry.py             # GeoJSON polygon validatsiyasi va maydon hisobi
 │   ├── indices.py              # NDVI, NDMI, NDRE, EVI, BSI formulalari
 │   ├── language.py             # O‘zbek, rus, ingliz tillarini avtomatik aniqlash

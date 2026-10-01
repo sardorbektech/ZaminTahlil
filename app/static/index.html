@@ -25,7 +25,99 @@
     <link rel="stylesheet" href="/styles.css?v=20260908_v4" />
   </head>
   <body>
-    <div class="app-container">
+    <!-- 0. FULL-SCREEN AUTH GATEWAY (LOGIN/REGISTER SCREEN - VISIBLE BEFORE LOGIN) -->
+    <div id="auth-gatekeeper" class="auth-gatekeeper-overlay">
+      <div class="auth-gatekeeper-box">
+        <div class="auth-gatekeeper-header">
+          <img src="/logo.png" alt="ZaminTahlil Logo" class="auth-gatekeeper-logo" />
+          <h1 class="auth-gatekeeper-title">ZaminTahlil</h1>
+          <p class="auth-gatekeeper-sub">Aqlli Qishloq Xo'jaligi Monitoringi va Tahlil Platformasi</p>
+        </div>
+
+        <div class="auth-gatekeeper-tabs">
+          <button type="button" class="auth-gatekeeper-tab active" id="gk-tab-login">Kirish</button>
+          <button type="button" class="auth-gatekeeper-tab" id="gk-tab-register">Ro'yxatdan o'tish</button>
+        </div>
+
+        <!-- Login Form -->
+        <form id="gk-form-login" class="auth-form">
+          <div class="form-group" style="margin-bottom: 16px;">
+            <label class="form-label" for="gk-login-username" style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 0.86rem;">Foydalanuvchi nomi</label>
+            <input
+              type="text"
+              class="form-control"
+              id="gk-login-username"
+              required
+              placeholder="masalan: ali_fermer"
+              autocomplete="username"
+              style="width: 100%; padding: 10px 14px; border-radius: var(--radius-md); border: 1px solid var(--color-border);"
+            />
+          </div>
+          <div class="form-group" style="margin-bottom: 16px;">
+            <label class="form-label" for="gk-login-password" style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 0.86rem;">Parol</label>
+            <input
+              type="password"
+              class="form-control"
+              id="gk-login-password"
+              required
+              placeholder="Parolingizni kiriting"
+              autocomplete="current-password"
+              style="width: 100%; padding: 10px 14px; border-radius: var(--radius-md); border: 1px solid var(--color-border);"
+            />
+          </div>
+          <div id="gk-login-error" style="display: none; color: var(--color-danger); font-size: 0.85rem; margin-bottom: 14px; background: var(--color-danger-bg); padding: 10px 14px; border-radius: var(--radius-sm); border: 1px solid #fca5a5;"></div>
+          <button type="submit" class="btn btn-primary" id="btn-gk-login" style="width: 100%; padding: 12px; font-size: 0.95rem; font-weight: 700; border-radius: var(--radius-md);">
+            Tizimga kirish
+          </button>
+        </form>
+
+        <!-- Register Form -->
+        <form id="gk-form-register" class="auth-form" style="display: none;">
+          <div class="form-group" style="margin-bottom: 16px;">
+            <label class="form-label" for="gk-reg-fullname" style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 0.86rem;">To'liq ism (ixtiyoriy)</label>
+            <input
+              type="text"
+              class="form-control"
+              id="gk-reg-fullname"
+              placeholder="Ali Valiyev"
+              autocomplete="name"
+              style="width: 100%; padding: 10px 14px; border-radius: var(--radius-md); border: 1px solid var(--color-border);"
+            />
+          </div>
+          <div class="form-group" style="margin-bottom: 16px;">
+            <label class="form-label" for="gk-reg-username" style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 0.86rem;">Foydalanuvchi nomi</label>
+            <input
+              type="text"
+              class="form-control"
+              id="gk-reg-username"
+              required
+              placeholder="kamida 3 ta belgi"
+              autocomplete="username"
+              style="width: 100%; padding: 10px 14px; border-radius: var(--radius-md); border: 1px solid var(--color-border);"
+            />
+          </div>
+          <div class="form-group" style="margin-bottom: 16px;">
+            <label class="form-label" for="gk-reg-password" style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 0.86rem;">Parol</label>
+            <input
+              type="password"
+              class="form-control"
+              id="gk-reg-password"
+              required
+              placeholder="kamida 6 ta belgi"
+              autocomplete="new-password"
+              style="width: 100%; padding: 10px 14px; border-radius: var(--radius-md); border: 1px solid var(--color-border);"
+            />
+          </div>
+          <div id="gk-reg-error" style="display: none; color: var(--color-danger); font-size: 0.85rem; margin-bottom: 14px; background: var(--color-danger-bg); padding: 10px 14px; border-radius: var(--radius-sm); border: 1px solid #fca5a5;"></div>
+          <button type="submit" class="btn btn-primary" id="btn-gk-register" style="width: 100%; padding: 12px; font-size: 0.95rem; font-weight: 700; border-radius: var(--radius-md);">
+            Ro'yxatdan o'tish
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- 1. MAIN APP CONTAINER (HIDDEN BEFORE LOGIN) -->
+    <div class="app-container" id="app-container" style="display: none;">
       <!-- 1. GLOBAL TOP HEADER -->
       <header class="top-header">
         <div class="header-left">

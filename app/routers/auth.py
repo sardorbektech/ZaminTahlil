@@ -3,11 +3,11 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, status
 
-from app.deps import CurrentUserDependency, RepositoryDependency, SettingsDependency
+from app.deps import CurrentUserDependency, RepositoryDependency
 from app.schemas import AuthTokenResponse, UserLoginRequest, UserRegisterRequest, UserOut
-from app.security import create_access_token, hash_password
+from app.security import hash_password
 
 logger = logging.getLogger(__name__)
 
@@ -18,9 +18,8 @@ router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 async def register_user(
     payload: UserRegisterRequest,
     repository: RepositoryDependency,
-    settings: SettingsDependency,
 ) -> dict[str, Any]:
-    """Yangi foydalanuvchini ro'yxatdan o'tkazadi."""
+    """Yangi foydalanuvchini ro'yxatdan o'tkazadi va yangi sessiya ochadi."""
     existing = repository.get_user_by_username(payload.username)
     if existing:
         raise HTTPException(
@@ -35,14 +34,10 @@ async def register_user(
         full_name=payload.full_name,
     )
 
-    token = create_access_token(
-        data={"sub": str(user["id"]), "username": user["username"]},
-        secret_key=settings.jwt_secret_key,
-        algorithm=settings.jwt_algorithm,
-    )
+    session_token = repository.create_session(user["id"])
 
     return {
-        "token": token,
+        "token": session_token,
         "token_type": "Bearer",
         "user": user,
     }
@@ -52,9 +47,8 @@ async def register_user(
 async def login_user(
     payload: UserLoginRequest,
     repository: RepositoryDependency,
-    settings: SettingsDependency,
 ) -> dict[str, Any]:
-    """Foydalanuvchi nomi va parol orqali tizimga kirish."""
+    """Foydalanuvchi nomi va parol orqali tizimga kirish (SQLite sessiya)."""
     user = repository.authenticate_user(payload.username, payload.password)
     if not user:
         raise HTTPException(
@@ -63,17 +57,32 @@ async def login_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    token = create_access_token(
-        data={"sub": str(user["id"]), "username": user["username"]},
-        secret_key=settings.jwt_secret_key,
-        algorithm=settings.jwt_algorithm,
-    )
+    session_token = repository.create_session(user["id"])
 
     return {
-        "token": token,
+        "token": session_token,
         "token_type": "Bearer",
         "user": user,
     }
+
+
+@router.post("/logout")
+async def logout_user(
+    request: Request,
+    repository: RepositoryDependency,
+) -> dict[str, Any]:
+    """Joriy foydalanuvchi sessiyasini ma'lumotlar bazasidan o'chiradi."""
+    auth_header = request.headers.get("Authorization")
+    token: str | None = None
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ", 1)[1].strip()
+    elif request.headers.get("X-Session-Token"):
+        token = request.headers.get("X-Session-Token", "").strip()
+
+    if token:
+        repository.delete_session(token)
+
+    return {"status": "ok", "message": "Tizimdan muvaffaqiyatli chiqildi"}
 
 
 @router.get("/me", response_model=UserOut)

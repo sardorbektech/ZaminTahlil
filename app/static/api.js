@@ -132,6 +132,10 @@
       return this.post("/api/auth/login", credentials, signal);
     },
 
+    logout(signal) {
+      return this.post("/api/auth/logout", null, signal);
+    },
+
     getMe(signal) {
       return this.get("/api/auth/me", null, signal);
     },
