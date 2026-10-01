@@ -284,29 +284,35 @@ Loyiha Google Cloud VM xotirasini tejash uchun faqat eng zaruriy 20 ta toza kutu
 
 ---
 
-## 6. Ma’lumotlar Bazasi Sxemasi (Schema v7)
+## 6. Ma’lumotlar Bazasi Sxemasi (Schema v8)
 
-Loyiha quyidagi 11 ta jadvaldan iborat relying bazaga ega:
+Loyiha quyidagi 12 ta jadvaldan iborat relying bazaga ega:
 
-1. **`fields`**: `id`, `public_id` (8 xonali ID), `geometry_json`, `geometry_hash` (UNIQUE), `area_hectares`, `crop_name`, `planted_on`, `growth_stage`, `created_at`, `updated_at`.
-2. **`acquisitions`**: Sentinel-2 tasvirlari sanasi, mahsulot ID, reviziya kaliti, bulutlilik ko‘rsatkichi.
-3. **`index_values`**: Har bir tasvir va indeks bo‘yicha hisoblangan `mean_value`, `min_value`, `median_value`, `max_value`.
-4. **`artifacts`**: Qatlamlarning PNG render tasvirlari, koordinata bounding boxlari (`bbox_json`), kenglik va balandligi.
-5. **`recommendations`**: AI va ekspert agronomik tavsiyalari (Qizil, Sariq, Yashil guruhlar va anomaliya hisoboti).
-6. **`field_chat_messages`**: Dala yozishmalari tarixi (role, content, `rag_sources_json`, `rag_strategy`, `rag_source_title`, vaqti).
-7. **`field_chat_summaries`**: Dala muloqotlarining lo‘nda, qisqa xulosasi (Summary) va xabarlar soni.
-8. **`rag_documents`**: Bazaga kiritilgan PDF kitoblar (`is_active`, `embedding_model`, `embedding_dim`, nomi, fayl yo‘li, sahifalar va bo‘laklar soni).
-9. **`rag_chunks`**: Kitoblardan ajratilgan matn bo‘laklari va 768-o‘lchamli vektorlar (`embedding BLOB`).
-10. **`yield_predictions`**: Hosildorlik bashorati tarixi (model, $t/ga$, jami tonna, top parametrlar, fenologiya, `data_sources_json`).
-11. **`telegram_users`**: Telegram foydalanuvchilarining joriy tanlangan faol dalasi (`chat_id`, `active_field_id`, vaqti).
+1. **`users`**: Foydalanuvchilar (`id`, `username` UNIQUE, `password_hash`, `full_name`, `telegram_id` UNIQUE, `created_at`).
+2. **`fields`**: `id`, `user_id` (FOREIGN KEY -> users.id), `public_id` (8 xonali ID), `geometry_json`, `geometry_hash` (UNIQUE), `area_hectares`, `crop_name`, `planted_on`, `growth_stage`, `created_at`, `updated_at`.
+3. **`acquisitions`**: Sentinel-2 tasvirlari sanasi, mahsulot ID, reviziya kaliti, bulutlilik ko‘rsatkichi.
+4. **`index_values`**: Har bir tasvir va indeks bo‘yicha hisoblangan `mean_value`, `min_value`, `median_value`, `max_value`.
+5. **`artifacts`**: Qatlamlarning PNG render tasvirlari, koordinata bounding boxlari (`bbox_json`), kenglik va balandligi.
+6. **`recommendations`**: AI va ekspert agronomik tavsiyalari (Qizil, Sariq, Yashil guruhlar va anomaliya hisoboti).
+7. **`field_chat_messages`**: Dala yozishmalari tarixi (role, content, `rag_sources_json`, `rag_strategy`, `rag_source_title`, vaqti).
+8. **`field_chat_summaries`**: Dala muloqotlarining lo‘nda, qisqa xulosasi (Summary) va xabarlar soni.
+9. **`rag_documents`**: Bazaga kiritilgan PDF kitoblar (`is_active`, `embedding_model`, `embedding_dim`, nomi, fayl yo‘li, sahifalar va bo‘laklar soni).
+10. **`rag_chunks`**: Kitoblardan ajratilgan matn bo‘laklari va 768-o‘lchamli vektorlar (`embedding BLOB`).
+11. **`yield_predictions`**: Hosildorlik bashorati tarixi (model, $t/ga$, jami tonna, top parametrlar, fenologiya, `data_sources_json`).
+12. **`telegram_users`**: Telegram foydalanuvchilarining joriy tanlangan faol dalasi (`chat_id`, `active_field_id`, vaqti).
 
 ---
 
 ## 7. API Spetsifikatsiyasi (REST Endpoints)
 
+### Foydalanuvchi Autentifikatsiyasi (JWT)
+- `POST /api/auth/register` — Yangi foydalanuvchini ro'yxatdan o'tkazish (`username`, `password`, `full_name`). Yangi JWT access token qaytaradi.
+- `POST /api/auth/login` — Tizimga kirish (`username`, `password`). JWT access token va foydalanuvchi ma'lumotlarini qaytaradi.
+- `GET /api/auth/me` — Joriy kirgan foydalanuvchi profilini olish (Bearer Token talab qiladi).
+
 ### Dala Boshqaruvi
-- `POST /api/fields` — Yangi dala qo‘shish (GeoJSON polygon, ekin nomi, ekilgan sana, rivojlanish bosqichi. Dublikat bo‘lsa: 409).
-- `GET /api/fields` — Barcha saqlangan dalalar ro‘yxati.
+- `POST /api/fields` — Yangi dala qo‘shish (GeoJSON polygon, ekin nomi, ekilgan sana, rivojlanish bosqichi. Joriy foydalanuvchi `user_id` bilan bog'lanadi. Dublikat bo‘lsa: 409).
+- `GET /api/fields` — Kirgan foydalanuvchining barcha saqlangan dalalari ro‘yxati (ma'lumotlar izolyatsiyasi).
 - `GET /api/fields/{id}` — Dala tafsilotlari (id yoki 8 xonali public_id orqali).
 - `POST /api/database/purge-fields` — Barcha dala maydonlari va tahlillarni tozalash (Parol: `roziman`).
 - `GET /api/fields/{id}/problem-zones` — Dalaning fazoviy muammoli zonalari (suvsizlik va kasallik o'choqlari joylashuvi xalqchil tushunarli tilda).

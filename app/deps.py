@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Annotated, cast
+from typing import Annotated, Any, cast
 from fastapi import Depends, Request
 
 from app.ai import AIClient
@@ -45,6 +45,40 @@ def detail(settings: Settings, exc: Exception, generic: str) -> str:
     return generic if settings.is_prod else str(exc)
 
 
+def get_current_user_optional(request: Request) -> dict[str, Any] | None:
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return None
+    token = auth_header.split(" ", 1)[1].strip()
+    if not token:
+        return None
+    settings = get_settings(request)
+    from app.security import decode_access_token
+
+    payload = decode_access_token(token, settings.jwt_secret_key)
+    if not payload or "sub" not in payload:
+        return None
+    repo = get_repository(request)
+    try:
+        user_id = int(payload["sub"])
+        return repo.get_user_by_id(user_id)
+    except Exception:
+        return None
+
+
+def get_current_user(request: Request) -> dict[str, Any]:
+    user = get_current_user_optional(request)
+    if not user:
+        from fastapi import HTTPException, status
+
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Tizimga kirish talab qilinadi (token yaroqsiz yoki muddati o'tgan).",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return user
+
+
 SettingsDependency = Annotated[Settings, Depends(get_settings)]
 RepositoryDependency = Annotated[Repository, Depends(get_repository)]
 ArtifactWriterDependency = Annotated[ArtifactWriter, Depends(get_artifact_writer)]
@@ -52,3 +86,5 @@ AIDependency = Annotated[AIClient | None, Depends(get_ai)]
 RAGDependency = Annotated[RAGService, Depends(get_rag)]
 YieldServiceDependency = Annotated[YieldInferenceService, Depends(get_yield_service)]
 SentinelDependency = Annotated[SentinelHubClient | None, Depends(get_sentinel)]
+CurrentUserOptionalDependency = Annotated[dict[str, Any] | None, Depends(get_current_user_optional)]
+CurrentUserDependency = Annotated[dict[str, Any], Depends(get_current_user)]

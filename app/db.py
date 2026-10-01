@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -13,9 +13,20 @@ CREATE TABLE IF NOT EXISTS schema_version (
     applied_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    full_name TEXT,
+    telegram_id INTEGER UNIQUE,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_users_telegram ON users(telegram_id);
+
 CREATE TABLE IF NOT EXISTS fields (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     public_id TEXT NOT NULL UNIQUE,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     geometry_json TEXT NOT NULL,
     geometry_hash TEXT NOT NULL UNIQUE,
     area_hectares REAL NOT NULL CHECK(area_hectares > 0),
@@ -228,6 +239,12 @@ class Database:
             if "data_sources_json" not in yield_pred_columns:
                 connection.execute(
                     "ALTER TABLE yield_predictions ADD COLUMN data_sources_json TEXT NOT NULL DEFAULT '[]'"
+                )
+
+            # Fields Schema v8: user_id column
+            if "user_id" not in field_columns:
+                connection.execute(
+                    "ALTER TABLE fields ADD COLUMN user_id INTEGER REFERENCES users(id) ON DELETE CASCADE"
                 )
 
             connection.execute(

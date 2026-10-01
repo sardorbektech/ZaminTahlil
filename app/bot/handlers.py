@@ -25,10 +25,16 @@ logger = logging.getLogger(__name__)
 router = Router(name="zamintahlil_bot_router")
 
 
-def _get_active_field_or_first(chat_id: int, app: Any) -> dict[str, Any] | None:
+def _get_authenticated_user(chat_id: int, app: Any) -> dict[str, Any] | None:
+    """Telegram foydalanuvchisi tizimga kirganligini tekshiradi."""
+    repo = app.state.repository
+    return repo.get_user_by_telegram_id(chat_id)
+
+
+def _get_active_field_or_first(chat_id: int, app: Any, user_id: int | None = None) -> dict[str, Any] | None:
     """Foydalanuvchining faol dalasini yoki birinchi mavjud dalasini oladi."""
     repo = app.state.repository
-    fields = repo.list_fields()
+    fields = repo.list_fields(user_id=user_id)
     if not fields:
         return None
 
@@ -44,26 +50,142 @@ def _get_active_field_or_first(chat_id: int, app: Any) -> dict[str, Any] | None:
     return first_field
 
 
+async def _ensure_auth(message: Message, app: Any) -> dict[str, Any] | None:
+    """Foydalanuvchi tizimga kirganini tekshiradi, aks holda login qilishni so'raydi."""
+    chat_id = message.chat.id
+    user = _get_authenticated_user(chat_id, app)
+    if not user:
+        await message.answer(
+            "🔐 <b>ZaminTahlil tizimiga kirish talab qilinadi!</b>\n\n"
+            "O'z dalalaringizni ko'rish va boshqarish uchun veb-platformadagi login va parolingiz bilan kiring:\n"
+            "👉 <code>/login username parol</code>\n\n"
+            "<i>Eslatma: Ro'yxatdan o'tish faqat veb-platformada amalga oshiriladi. Botda ro'yxatdan o'tish yo'q.</i>",
+            parse_mode="HTML",
+        )
+        return None
+    return user
+
+
+@router.message(Command("login"))
+async def handle_login(message: Message, app: Any) -> None:
+    """Foydalanuvchini login va parol orqali tizimga kiritish."""
+    chat_id = message.chat.id
+    repo = app.state.repository
+    settings = app.state.settings
+
+    text = (message.text or "").strip()
+    parts = text.split()
+    if len(parts) < 3:
+        await message.answer(
+            "🔑 <b>Tizimga kirish uchun login va parolingizni kiriting:</b>\n\n"
+            "Format: <code>/login username parol</code>\n\n"
+            "<i>Misol: <code>/login sardorbek 123456</code></i>\n\n"
+            "⚠️ <i>Eslatma: Agar hisobingiz bo'lmasa, avval ZaminTahlil veb-saytida ro'yxatdan o'ting. "
+            "Telegram bot orqali ro'yxatdan o'tish mumkin emas.</i>",
+            parse_mode="HTML",
+        )
+        return
+
+    username = parts[1].strip()
+    password = parts[2].strip()
+
+    user = repo.authenticate_user(username, password)
+    if not user:
+        await message.answer(
+            "❌ <b>Foydalanuvchi nomi yoki parol noto'g'ri!</b>\n\n"
+            "Iltimos, qaytadan tekshirib kiriting:\n<code>/login username parol</code>",
+            parse_mode="HTML",
+        )
+        return
+
+    repo.link_telegram_user(int(user["id"]), chat_id)
+    user_fields = repo.list_fields(user_id=int(user["id"]))
+    if user_fields:
+        repo.set_telegram_active_field_id(chat_id, int(user_fields[0]["id"]))
+        active_text = f"🌾 Joriy faol dala: <b>{user_fields[0]['crop_name']}</b> (#{user_fields[0]['id']}, {user_fields[0]['area_hectares']} ga)\n"
+    else:
+        active_text = "🌾 Hozircha sizda dalalar mavjud emas. Veb-platformada yangi dala chizishingiz mumkin.\n"
+
+    success_msg = (
+        f"✅ <b>Xush kelibsiz, {user.get('full_name') or user['username']}!</b>\n\n"
+        f"ZaminTahlil tizimiga muvaffaqiyatli kirdingiz.\n"
+        f"Sizga tegishli dalalar soni: <b>{len(user_fields)} ta</b>.\n"
+        f"{active_text}\n"
+        "Boshqarish uchun quyidagi menyu tugmalaridan foydalanishingiz mumkin:"
+    )
+
+    await message.answer(
+        success_msg,
+        reply_markup=get_main_reply_keyboard(settings.telegram_webapp_url),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("logout"))
+async def handle_logout(message: Message, app: Any) -> None:
+    """Telegram hisobini tizimdan uzish."""
+    chat_id = message.chat.id
+    repo = app.state.repository
+    repo.unlink_telegram_user(chat_id)
+    repo.set_telegram_active_field_id(chat_id, None)
+    await message.answer(
+        "👋 <b>Tizimdan muvaffaqiyatli chiqdingiz.</b>\n\n"
+        "Qayta kirish uchun: <code>/login username parol</code>",
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("register"))
+async def handle_register_notice(message: Message) -> None:
+    """Telegramda ro'yxatdan o'tish taqiqlanganligi haqida xabar."""
+    await message.answer(
+        "⚠️ <b>Telegram bot orqali ro'yxatdan o'tish mumkin emas!</b>\n\n"
+        "Xavfsizlik va geofazoviy xarita talablari sababli ro'yxatdan o'tish faqat "
+        "<b>ZaminTahlil veb-platformasida</b> amalga oshiriladi.\n\n"
+        "Veb-saytda ro'yxatdan o'tgach, botda quyidagi buyruq orqali kiring:\n"
+        "<code>/login username parol</code>",
+        parse_mode="HTML",
+    )
+
+
 @router.message(CommandStart())
 async def handle_start(message: Message, app: Any) -> None:
     """Start buyrug'i."""
     chat_id = message.chat.id
     settings = app.state.settings
     repo = app.state.repository
-    fields = repo.list_fields()
 
-    active_field = _get_active_field_or_first(chat_id, app)
+    user = _get_authenticated_user(chat_id, app)
+    if not user:
+        welcome_text = (
+            "🌱 <b>Assalomu alaykum! ZaminTahlil platformasiga xush kelibsiz.</b>\n\n"
+            "Ushbu bot orqali siz o'z dalalaringizni kosmik sun'iy yo'ldosh (Sentinel-2) "
+            "orqali kuzatishingiz, suv va kasallik o'choqlarini aniqlashingiz, hosildorlikni bashorat "
+            "qilishingiz va AI Bosh Agronomidan maslahat olishingiz mumkin.\n\n"
+            "🔐 <b>Davom etish uchun tizimga kiring:</b>\n"
+            "<code>/login username parol</code>\n\n"
+            "<i>Misol: <code>/login sardorbek 123456</code></i>\n\n"
+            "⚠️ <i>Eslatma: Telegram bot orqali ro'yxatdan o'tish mumkin emas. Agar hisobingiz bo'lmasa, "
+            "avval ZaminTahlil veb-platformasida ro'yxatdan o'ting.</i>"
+        )
+        await message.answer(
+            welcome_text,
+            reply_markup=get_main_reply_keyboard(settings.telegram_webapp_url),
+            parse_mode="HTML",
+        )
+        return
+
+    user_id = int(user["id"])
+    active_field = _get_active_field_or_first(chat_id, app, user_id=user_id)
     field_text = (
         f"🌾 Joriy faol dala: <b>{active_field['crop_name']}</b> (ID: {active_field['id']}, {active_field['area_hectares']} ga)\n"
         if active_field
-        else "⚠️ Hozircha tizimda dalalar mavjud emas.\n"
+        else "⚠️ Hozircha sizda dalalar mavjud emas. Veb-platformada yangi dala chizishingiz mumkin.\n"
     )
 
     welcome_text = (
-        "🌱 <b>Assalomu alaykum! ZaminTahlil platformasiga xush kelibsiz.</b>\n\n"
-        "Ushbu bot orqali siz o'z dalalaringizni kosmik sun'iy yo'ldosh (Sentinel-2) "
-        "orqali kuzatishingiz, suv va kasallik o'choqlarini aniqlashingiz, hosildorlikni bashorat "
-        "qilishingiz va AI Bosh Agronomidan maslahat olishingiz mumkin.\n\n"
+        f"🌱 <b>Assalomu alaykum, {user.get('full_name') or user['username']}!</b>\n\n"
+        "ZaminTahlil platformasiga xush kelibsiz.\n\n"
         f"{field_text}\n"
         "Quyidagi menyu tugmalaridan foydalaning yoki savolingizni to'g'ridan-to'g'ri yozing:"
     )
@@ -88,7 +210,8 @@ async def handle_help(message: Message) -> None:
         "🔍 <b>/muammolar</b> — Suvsizlik va kasallik o'choqlarining aniq joylashuvi\n"
         "📋 <b>/tavsiya</b> — 3-toifali shoshilinch agronomik tavsiyalar\n"
         "🌤️ <b>/obhavo</b> — 7 kunlik agrometeorologiya ob-havo ma'lumotlari\n"
-        "🤖 <b>/ai &lt;savol&gt;</b> — AI Bosh Agronomidan ilmiy-amaliy maslahat olish\n\n"
+        "🤖 <b>/ai &lt;savol&gt;</b> — AI Bosh Agronomidan ilmiy-amaliy maslahat olish\n"
+        "🚪 <b>/logout</b> — Tizimdan chiqish\n\n"
         "<i>💡 Shuningdek, xohlagan agronomik savolingizni to'g'ridan-to'g'ri matn sifatida yuborishingiz mumkin!</i>"
     )
     await message.answer(help_text, parse_mode="HTML")
@@ -99,11 +222,15 @@ async def handle_help(message: Message) -> None:
 async def handle_fields_list(message: Message, app: Any) -> None:
     """Dalalar ro'yxatini chiqarish va tanlash."""
     chat_id = message.chat.id
+    user = await _ensure_auth(message, app)
+    if not user:
+        return
+
     repo = app.state.repository
-    fields = repo.list_fields()
+    fields = repo.list_fields(user_id=int(user["id"]))
 
     if not fields:
-        await message.answer("⚠️ Tizimda hali birorta ham dala ro'yxatdan o'tkazilmagan.")
+        await message.answer("⚠️ Sizda hali birorta ham dala ro'yxatdan o'tkazilmagan. Veb-sayt orqali dala qo'shing.")
         return
 
     active_id = repo.get_telegram_active_field_id(chat_id)
@@ -120,6 +247,7 @@ async def handle_fields_list(message: Message, app: Any) -> None:
     lines.append("\nQuyidagi tugmalar orqali boshqarmoqchi bo'lgan dalangizni tanlang:")
     kb = get_fields_inline_keyboard(fields, active_id)
     await message.answer("\n".join(lines), reply_markup=kb, parse_mode="HTML")
+
 
 
 @router.callback_query(F.data.startswith("select_field:"))
@@ -153,7 +281,10 @@ async def handle_select_field_callback(query: CallbackQuery, app: Any) -> None:
 async def handle_problem_zones(message: Message, app: Any) -> None:
     """Fazoviy muammoli zonalarni (suvsizlik va kasallik) xalqchil tushunarli tilda chiqarish."""
     chat_id = message.chat.id
-    active_field = _get_active_field_or_first(chat_id, app)
+    user = await _ensure_auth(message, app)
+    if not user:
+        return
+    active_field = _get_active_field_or_first(chat_id, app, user_id=int(user["id"]))
     if not active_field:
         await message.answer("⚠️ Avval /dalalar bo'limidan dalani tanlang.")
         return
@@ -204,7 +335,10 @@ async def handle_problem_zones(message: Message, app: Any) -> None:
 async def handle_analysis(message: Message, app: Any) -> None:
     """Dala kosmik tahlilini ko'rsatish va tasvir yuborish."""
     chat_id = message.chat.id
-    active_field = _get_active_field_or_first(chat_id, app)
+    user = await _ensure_auth(message, app)
+    if not user:
+        return
+    active_field = _get_active_field_or_first(chat_id, app, user_id=int(user["id"]))
     if not active_field:
         await message.answer("⚠️ Hozircha dalalar mavjud emas. /dalalar ni ko'ring.")
         return
@@ -221,7 +355,8 @@ async def handle_analysis(message: Message, app: Any) -> None:
         )
         return
 
-    latest = acqs[0]
+    # Eng yaxshi (yaroqli pikseli bor) kuzatuvni tanlaymiz
+    latest = next((a for a in acqs if (a.get("valid_pixel_count") or 0) > 0 and not a.get("fully_cloudy")), acqs[0])
     records = repo.index_value_records(field_id, limit=6)
 
     # Indekslar statistikasi
@@ -274,7 +409,10 @@ async def handle_analysis(message: Message, app: Any) -> None:
 async def handle_indexes_menu(message: Message, app: Any) -> None:
     """Spektral indekslar xaritasini tanlash menyusi."""
     chat_id = message.chat.id
-    active_field = _get_active_field_or_first(chat_id, app)
+    user = await _ensure_auth(message, app)
+    if not user:
+        return
+    active_field = _get_active_field_or_first(chat_id, app, user_id=int(user["id"]))
     if not active_field:
         await message.answer("⚠️ Avval /dalalar orqali dalani tanlang.")
         return
@@ -286,6 +424,7 @@ async def handle_indexes_menu(message: Message, app: Any) -> None:
         reply_markup=kb,
         parse_mode="HTML",
     )
+
 
 
 @router.callback_query(F.data.startswith("view_index:"))
@@ -335,7 +474,10 @@ async def handle_view_index_callback(query: CallbackQuery, app: Any) -> None:
 async def handle_yield_prediction(message: Message, app: Any) -> None:
     """Hosildorlikni mashinali o'rganish orqali hisoblash."""
     chat_id = message.chat.id
-    active_field = _get_active_field_or_first(chat_id, app)
+    user = await _ensure_auth(message, app)
+    if not user:
+        return
+    active_field = _get_active_field_or_first(chat_id, app, user_id=int(user["id"]))
     if not active_field:
         await message.answer("⚠️ Avval /dalalar orqali dalani tanlang.")
         return
@@ -439,7 +581,10 @@ async def handle_yield_prediction(message: Message, app: Any) -> None:
 async def handle_recommendation(message: Message, app: Any) -> None:
     """3-toifali agronomik tavsiya."""
     chat_id = message.chat.id
-    active_field = _get_active_field_or_first(chat_id, app)
+    user = await _ensure_auth(message, app)
+    if not user:
+        return
+    active_field = _get_active_field_or_first(chat_id, app, user_id=int(user["id"]))
     if not active_field:
         await message.answer("⚠️ Avval /dalalar orqali dalani tanlang.")
         return
@@ -492,7 +637,10 @@ async def handle_recommendation(message: Message, app: Any) -> None:
 async def handle_weather(message: Message, app: Any) -> None:
     """Dala bo'yicha 7 kunlik ob-havo prognozi."""
     chat_id = message.chat.id
-    active_field = _get_active_field_or_first(chat_id, app)
+    user = await _ensure_auth(message, app)
+    if not user:
+        return
+    active_field = _get_active_field_or_first(chat_id, app, user_id=int(user["id"]))
     if not active_field:
         await message.answer("⚠️ Avval /dalalar orqali dalani tanlang.")
         return
@@ -554,6 +702,10 @@ async def handle_weather(message: Message, app: Any) -> None:
 async def handle_ai_chat_message(message: Message, app: Any) -> None:
     """Foydalanuvchining erkin savollariga AI Bosh Agronomi javobi."""
     chat_id = message.chat.id
+    user = await _ensure_auth(message, app)
+    if not user:
+        return
+
     user_text = message.text or ""
     if user_text == "🤖 AI Agronom":
         await message.answer(
@@ -571,10 +723,11 @@ async def handle_ai_chat_message(message: Message, app: Any) -> None:
             await message.answer("Savolingizni kiriting: masalan <code>/ai Dalam holati qanday?</code>", parse_mode="HTML")
             return
 
-    active_field = _get_active_field_or_first(chat_id, app)
+    active_field = _get_active_field_or_first(chat_id, app, user_id=int(user["id"]))
     if not active_field:
         await message.answer("⚠️ Avval /dalalar bo'limidan dalangizni tanlang.")
         return
+
 
     field_id = int(active_field["id"])
     repo = app.state.repository

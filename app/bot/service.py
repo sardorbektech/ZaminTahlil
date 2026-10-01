@@ -34,6 +34,7 @@ async def start_telegram_bot(app: FastAPI) -> None:
     # app obyektini barcha handlerlarga dependency sifatida uzatish
     dp["app"] = app
 
+    router.parent_router = None
     dp.include_router(router)
 
     _bot_instance = bot
@@ -55,7 +56,16 @@ async def stop_telegram_bot() -> None:
     """Telegram bot polling va sessiyasini to'xtatadi."""
     global _bot_instance, _dispatcher_instance
     if _dispatcher_instance is not None:
-        await _dispatcher_instance.stop_polling()
+        try:
+            if hasattr(_dispatcher_instance, "_running_lock") and _dispatcher_instance._running_lock.locked():
+                await _dispatcher_instance.stop_polling()
+        except Exception as exc:
+            logger.debug("Dispatcher stop_polling xatolik: %s", exc)
+        _dispatcher_instance = None
     if _bot_instance is not None:
-        await _bot_instance.session.close()
+        try:
+            await _bot_instance.session.close()
+        except Exception as exc:
+            logger.debug("Bot session close xatolik: %s", exc)
+        _bot_instance = None
     logger.info("Telegram Bot to'xtatildi.")

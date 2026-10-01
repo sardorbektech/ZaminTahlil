@@ -6,6 +6,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
+import asyncio
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
@@ -20,6 +21,7 @@ from app.rendering import ArtifactWriter
 from app.repository import NotFoundError, Repository
 from app.routers import (
     analysis_router,
+    auth_router,
     chat_router,
     fields_router,
     rag_router,
@@ -145,6 +147,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {"status": "ok"}
 
     # 4. Modulli Routerlar
+    app.include_router(auth_router)
     app.include_router(fields_router)
     app.include_router(analysis_router)
     app.include_router(chat_router)

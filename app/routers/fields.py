@@ -7,7 +7,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, status
 
-from app.deps import RepositoryDependency
+from app.deps import CurrentUserOptionalDependency, RepositoryDependency
 from app.geometry import (
     canonical_geojson_and_hash,
     geodesic_area_hectares,
@@ -28,7 +28,9 @@ router = APIRouter(tags=["Fields"])
 
 @router.post("/api/fields", response_model=FieldOut, status_code=status.HTTP_201_CREATED)
 async def create_field(
-    payload: FieldCreate, repository: RepositoryDependency
+    payload: FieldCreate,
+    repository: RepositoryDependency,
+    current_user: CurrentUserOptionalDependency = None,
 ) -> dict[str, object]:
     try:
         polygon = validate_polygon_geojson(payload.geometry)
@@ -37,6 +39,7 @@ async def create_field(
             status_code=400, detail=f"Noto'g'ri polygon geometriyasi: {exc}"
         ) from exc
     geometry, geometry_hash = canonical_geojson_and_hash(polygon)
+    user_id = current_user["id"] if current_user else None
     try:
         return repository.create_field(
             geometry=geometry,
@@ -45,6 +48,7 @@ async def create_field(
             crop_name=payload.crop_name,
             planted_on=payload.planted_on,
             growth_stage=payload.growth_stage,
+            user_id=user_id,
         )
     except DuplicateFieldError as exc:
         raise HTTPException(
@@ -54,8 +58,13 @@ async def create_field(
 
 
 @router.get("/api/fields", response_model=list[FieldOut])
-async def list_fields(repository: RepositoryDependency) -> list[dict[str, object]]:
-    return repository.list_fields()
+async def list_fields(
+    repository: RepositoryDependency,
+    current_user: CurrentUserOptionalDependency = None,
+) -> list[dict[str, object]]:
+    user_id = current_user["id"] if current_user else None
+    return repository.list_fields(user_id=user_id)
+
 
 
 @router.get("/api/fields/{field_id}", response_model=FieldDetail)

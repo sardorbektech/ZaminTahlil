@@ -4,15 +4,71 @@ maxfiy ma'lumotlarni maskalash uchun yordamchi modullar."""
 from __future__ import annotations
 
 import collections
+from datetime import datetime, timedelta, timezone
+import hashlib
+import hmac
 import json
 import logging
+import os
 import re
 import threading
 import time
 from collections.abc import Iterable
 from typing import Any
 
+import jwt
+
 from app.config import Settings
+
+
+def hash_password(password: str) -> str:
+    """Parolni PBKDF2-HMAC-SHA256 yordamida tuz va 100,000 iteratsiya bilan xeshlaydi."""
+    salt = os.urandom(16)
+    key = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 100_000)
+    return f"{salt.hex()}${key.hex()}"
+
+
+def verify_password(password: str, hashed: str) -> bool:
+    """Parolni xesh bilan xavfsiz (constant-time) solishtiradi."""
+    try:
+        salt_hex, key_hex = hashed.split("$", 1)
+        salt = bytes.fromhex(salt_hex)
+        expected_key = bytes.fromhex(key_hex)
+        actual_key = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 100_000)
+        return hmac.compare_digest(actual_key, expected_key)
+    except Exception:
+        return False
+
+
+def create_access_token(
+    data: dict[str, Any],
+    secret_key: str,
+    algorithm: str = "HS256",
+    expires_delta: timedelta | None = None,
+) -> str:
+    """Foydalanuvchi ma'lumotlari asosida JWT access token yaratadi."""
+    to_encode = data.copy()
+    now = datetime.now(timezone.utc)
+    if expires_delta:
+        expire = now + expires_delta
+    else:
+        expire = now + timedelta(days=30)
+    to_encode.update({"iat": now, "exp": expire})
+    return jwt.encode(to_encode, secret_key, algorithm=algorithm)
+
+
+def decode_access_token(
+    token: str,
+    secret_key: str,
+    algorithms: list[str] | None = None,
+) -> dict[str, Any] | None:
+    """JWT access tokenni tekshiradi va dekodlaydi."""
+    if algorithms is None:
+        algorithms = ["HS256"]
+    try:
+        return jwt.decode(token, secret_key, algorithms=algorithms)
+    except Exception:
+        return None
 
 # Har bir javobga qo'shiladigan statik xavfsizlik sarlavhalari.
 # Strict-Transport-Security esa faqat HTTPS so'rovlarga qo'shiladi (pastda).

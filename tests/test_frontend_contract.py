@@ -2,7 +2,7 @@ from pathlib import Path
 
 
 def test_layer_order_navigation_comparison_and_session_storage() -> None:
-    source = Path("app/static/app.js").read_text()
+    source = Path("app/static/app.js").read_text(encoding="utf-8")
     assert 'const LAYERS = ["RGB", "NDVI", "NDMI", "NDRE", "EVI", "BSI"]' in source
     assert all(name not in source for name in ("SAVI", "GNDVI", "NDWI", "NBR", "OSAVI"))
     assert "state.compare" in source and "applySwipe" in source

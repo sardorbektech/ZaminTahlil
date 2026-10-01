@@ -41,6 +41,7 @@
       hotspotMarker: null,
     },
     wizardDraft: null,
+    currentUser: null,
   };
 
   // Expose state globally for API synchronization
@@ -307,11 +308,22 @@
     dateB.innerHTML = optionsB;
   }
 
+  // Helper: Get best bounds for raster overlay (Exact artifact bbox or field polygon fallback)
+  function getArtifactBounds(artifact) {
+    if (artifact && artifact.bbox && Array.isArray(artifact.bbox) && artifact.bbox.length === 4) {
+      // GeoJSON bbox: [min_lon, min_lat, max_lon, max_lat] -> Leaflet: [[south, west], [north, east]]
+      return L.latLngBounds([
+        [artifact.bbox[1], artifact.bbox[0]],
+        [artifact.bbox[3], artifact.bbox[2]],
+      ]);
+    }
+    return state.maps.fieldBoundaryLayer ? state.maps.fieldBoundaryLayer.getBounds() : null;
+  }
+
   // Update A/B compare overlays
   async function updateCompareOverlays() {
     const imageMap = state.maps.main;
     if (!imageMap || !state.maps.fieldBoundaryLayer) return;
-    const bounds = state.maps.fieldBoundaryLayer.getBounds();
 
     if (!state.compare) {
       if (state.maps.rasterOverlayB) {
@@ -341,9 +353,12 @@
         }
         const artA = artsA.find((a) => a.layer_name.toUpperCase() === layerA.toUpperCase()) || artsA[0];
         if (artA) {
+          const boundsA = getArtifactBounds(artA);
           const urlA = artA.image_url || `/api/fields/${fieldId}/acquisitions/${acqA.id}/images/${artA.layer_name}`;
           if (state.maps.rasterOverlayA) imageMap.removeLayer(state.maps.rasterOverlayA);
-          state.maps.rasterOverlayA = L.imageOverlay(urlA, bounds, { opacity: 1, interactive: false }).addTo(imageMap);
+          if (boundsA) {
+            state.maps.rasterOverlayA = L.imageOverlay(urlA, boundsA, { opacity: 1, interactive: false }).addTo(imageMap);
+          }
         }
       } catch (err) {
         console.error("Failed to load overlay A:", err);
@@ -359,9 +374,12 @@
         }
         const artB = artsB.find((a) => a.layer_name.toUpperCase() === layerB.toUpperCase()) || artsB[0];
         if (artB) {
+          const boundsB = getArtifactBounds(artB);
           const urlB = artB.image_url || `/api/fields/${fieldId}/acquisitions/${acqB.id}/images/${artB.layer_name}`;
           if (state.maps.rasterOverlayB) imageMap.removeLayer(state.maps.rasterOverlayB);
-          state.maps.rasterOverlayB = L.imageOverlay(urlB, bounds, { opacity: 1, interactive: false }).addTo(imageMap);
+          if (boundsB) {
+            state.maps.rasterOverlayB = L.imageOverlay(urlB, boundsB, { opacity: 1, interactive: false }).addTo(imageMap);
+          }
         }
       } catch (err) {
         console.error("Failed to load overlay B:", err);
@@ -375,9 +393,24 @@
   async function loadAcquisitionArtifacts(acquisition) {
     if (!acquisition || !acquisition.id) {
       renderArtifactStats({});
+      const warningEl = document.getElementById("map-cloud-warning");
+      if (warningEl) warningEl.style.display = "none";
       return;
     }
     state.selectedAcquisition = acquisition;
+
+    // Check cloud coverage and valid pixels for warning banner
+    const isCloudy = (acquisition.valid_pixel_count || 0) === 0 || !!acquisition.fully_cloudy;
+    const warningEl = document.getElementById("map-cloud-warning");
+    const warningText = document.getElementById("map-cloud-warning-text");
+    if (warningEl && warningText) {
+      if (isCloudy) {
+        warningText.textContent = `\u26a0\ufe0f Ushbu sanada (${formatDateUI(acquisition.acquired_at)}) dala to'liq bulut bilan qoplangan (0 ta yaroqli piksel). Xaritada sun'iy yo'ldosh qatlami ko'rinmaydi. Quyidagi ro'yxatdan bulutsiz sanani tanlang.`;
+        warningEl.style.display = "flex";
+      } else {
+        warningEl.style.display = "none";
+      }
+    }
 
     try {
       let artifacts = state.cachedArtifacts.get(acquisition.id);
@@ -426,8 +459,8 @@
     }
 
     const imageUrl = artifact.image_url || `/api/artifacts/${artifact.id}/image`;
-    if (state.maps.fieldBoundaryLayer) {
-      const bounds = state.maps.fieldBoundaryLayer.getBounds();
+    const bounds = getArtifactBounds(artifact);
+    if (bounds) {
       state.maps.rasterOverlayA = L.imageOverlay(imageUrl, bounds, {
         opacity: 0.9,
         interactive: false,
@@ -584,13 +617,18 @@
       state.acquisitions = deduped;
 
       updateLayerChipsState(deduped.length > 0);
-      renderAcquisitionsList(deduped);
       updateCompareDateDropdowns();
 
       if (deduped.length > 0) {
-        await loadAcquisitionArtifacts(deduped[0]);
+        // Select newest acquisition with valid pixels, fallback to newest overall
+        const bestAcq = deduped.find((a) => (a.valid_pixel_count || 0) > 0 && !a.fully_cloudy) || deduped[0];
+        renderAcquisitionsList(deduped, bestAcq.id);
+        await loadAcquisitionArtifacts(bestAcq);
       } else {
+        renderAcquisitionsList([], null);
         renderArtifactStats({});
+        const warningEl = document.getElementById("map-cloud-warning");
+        if (warningEl) warningEl.style.display = "none";
       }
 
       // Load Recommendations cleanly
@@ -625,7 +663,7 @@
   }
 
   // Render Acquisitions List
-  function renderAcquisitionsList(acquisitions) {
+  function renderAcquisitionsList(acquisitions, activeId = null) {
     const container = document.getElementById("acquisitions-list-container");
     if (!container) return;
 
@@ -634,15 +672,22 @@
       return;
     }
 
+    const currentSelectedId = activeId ?? state.selectedAcquisition?.id ?? acquisitions[0]?.id;
+
     container.innerHTML = acquisitions
-      .map((acq, idx) => {
+      .map((acq) => {
         const d = formatDateUI(acq.acquired_at);
         const cloud = acq.cloud_coverage != null ? `${Math.round(acq.cloud_coverage)}%` : "0%";
-        const activeClass = idx === 0 ? "active" : "";
+        const isValid = (acq.valid_pixel_count || 0) > 0 && !acq.fully_cloudy;
+        const badgeText = isValid
+          ? `\u2601\ufe0f ${cloud} \u2022 ${Number(acq.valid_pixel_count).toLocaleString()} px`
+          : `\u26a0\ufe0f Bulutli (0 px)`;
+        const badgeColor = isValid ? "opacity: 0.85;" : "color: #dc2626; font-weight: 600;";
+        const activeClass = acq.id === currentSelectedId ? "active" : "";
         return `
-          <div class="acq-item ${activeClass}" data-id="${acq.id}">
+          <div class="acq-item ${activeClass}" data-id="${acq.id}" style="display: flex; justify-content: space-between; align-items: center;">
             <span>\ud83d\udcc5 ${d}</span>
-            <span style="font-size: 0.78rem; opacity: 0.8;">\u2601 ${cloud}</span>
+            <span style="font-size: 0.76rem; ${badgeColor}">${badgeText}</span>
           </div>
         `;
       })
@@ -1799,6 +1844,194 @@
     });
   }
 
+  // Authentication & User Session Management
+  function initAuth() {
+    const modal = document.getElementById("modal-auth");
+    const btnOpen = document.getElementById("btn-open-auth");
+    const btnClose = document.getElementById("btn-close-auth-modal");
+    const tabLogin = document.getElementById("tab-auth-login");
+    const tabRegister = document.getElementById("tab-auth-register");
+    const title = document.getElementById("auth-modal-title");
+    const formLogin = document.getElementById("form-auth-login");
+    const formRegister = document.getElementById("form-auth-register");
+    const loginError = document.getElementById("login-error-msg");
+    const regError = document.getElementById("reg-error-msg");
+    const btnLogout = document.getElementById("btn-logout");
+
+    function openModal(mode = "login") {
+      if (!modal) return;
+      modal.style.display = "flex";
+      switchTab(mode);
+    }
+
+    function closeModal() {
+      if (!modal) return;
+      modal.style.display = "none";
+      if (loginError) loginError.style.display = "none";
+      if (regError) regError.style.display = "none";
+    }
+
+    function switchTab(mode) {
+      if (mode === "login") {
+        tabLogin?.classList.add("active");
+        if (tabLogin) tabLogin.style.borderBottomColor = "var(--color-primary)";
+        if (tabLogin) tabLogin.style.color = "var(--color-primary)";
+        tabRegister?.classList.remove("active");
+        if (tabRegister) tabRegister.style.borderBottomColor = "transparent";
+        if (tabRegister) tabRegister.style.color = "var(--color-text-muted)";
+        if (title) title.textContent = "Tizimga kirish";
+        if (formLogin) formLogin.style.display = "block";
+        if (formRegister) formRegister.style.display = "none";
+      } else {
+        tabRegister?.classList.add("active");
+        if (tabRegister) tabRegister.style.borderBottomColor = "var(--color-primary)";
+        if (tabRegister) tabRegister.style.color = "var(--color-primary)";
+        tabLogin?.classList.remove("active");
+        if (tabLogin) tabLogin.style.borderBottomColor = "transparent";
+        if (tabLogin) tabLogin.style.color = "var(--color-text-muted)";
+        if (title) title.textContent = "Ro'yxatdan o'tish";
+        if (formLogin) formLogin.style.display = "none";
+        if (formRegister) formRegister.style.display = "block";
+      }
+      if (loginError) loginError.style.display = "none";
+      if (regError) regError.style.display = "none";
+    }
+
+    btnOpen?.addEventListener("click", () => openModal("login"));
+    btnClose?.addEventListener("click", closeModal);
+    modal?.addEventListener("click", (e) => {
+      if (e.target === modal) closeModal();
+    });
+
+    tabLogin?.addEventListener("click", () => switchTab("login"));
+    tabRegister?.addEventListener("click", () => switchTab("register"));
+
+    // Login submit
+    formLogin?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const usernameInput = document.getElementById("login-username");
+      const passwordInput = document.getElementById("login-password");
+      const btnSubmit = document.getElementById("btn-submit-login");
+
+      const username = usernameInput?.value.trim();
+      const password = passwordInput?.value;
+      if (!username || !password) return;
+
+      if (btnSubmit) {
+        btnSubmit.disabled = true;
+        btnSubmit.textContent = "Kirilmoqda...";
+      }
+      if (loginError) loginError.style.display = "none";
+
+      try {
+        const res = await api.login({ username, password });
+        localStorage.setItem("zamintahlil_token", res.access_token);
+        state.currentUser = res.user;
+        showToast(`Xush kelibsiz, ${res.user.full_name || res.user.username}!`, "success");
+        closeModal();
+        formLogin.reset();
+        await updateAuthUI();
+        await loadFields();
+      } catch (err) {
+        if (loginError) {
+          loginError.textContent = err.message || "Kirishda xatolik yuz berdi";
+          loginError.style.display = "block";
+        }
+      } finally {
+        if (btnSubmit) {
+          btnSubmit.disabled = false;
+          btnSubmit.textContent = "Kirish";
+        }
+      }
+    });
+
+    // Register submit
+    formRegister?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const fullNameInput = document.getElementById("reg-fullname");
+      const usernameInput = document.getElementById("reg-username");
+      const passwordInput = document.getElementById("reg-password");
+      const btnSubmit = document.getElementById("btn-submit-reg");
+
+      const full_name = fullNameInput?.value.trim() || null;
+      const username = usernameInput?.value.trim();
+      const password = passwordInput?.value;
+      if (!username || !password) return;
+
+      if (btnSubmit) {
+        btnSubmit.disabled = true;
+        btnSubmit.textContent = "Ro'yxatdan o'tilmoqda...";
+      }
+      if (regError) regError.style.display = "none";
+
+      try {
+        const res = await api.register({ username, password, full_name });
+        localStorage.setItem("zamintahlil_token", res.access_token);
+        state.currentUser = res.user;
+        showToast("Ro'yxatdan o'tish muvaffaqiyatli yakunlandi!", "success");
+        closeModal();
+        formRegister.reset();
+        await updateAuthUI();
+        await loadFields();
+      } catch (err) {
+        if (regError) {
+          regError.textContent = err.message || "Ro'yxatdan o'tishda xatolik yuz berdi";
+          regError.style.display = "block";
+        }
+      } finally {
+        if (btnSubmit) {
+          btnSubmit.disabled = false;
+          btnSubmit.textContent = "Ro'yxatdan o'tish";
+        }
+      }
+    });
+
+    // Logout click
+    btnLogout?.addEventListener("click", async () => {
+      localStorage.removeItem("zamintahlil_token");
+      state.currentUser = null;
+      showToast("Tizimdan chiqdingiz", "info");
+      await updateAuthUI();
+      await loadFields();
+    });
+
+    // Dismiss Cloud Warning Banner
+    document.getElementById("btn-dismiss-cloud-warning")?.addEventListener("click", () => {
+      const banner = document.getElementById("map-cloud-warning");
+      if (banner) banner.style.display = "none";
+    });
+  }
+
+  // Update Auth Profile UI
+  async function updateAuthUI() {
+    const authBtn = document.getElementById("btn-open-auth");
+    const userPill = document.getElementById("user-profile-pill");
+    const userNameEl = document.getElementById("user-display-name");
+
+    const token = localStorage.getItem("zamintahlil_token");
+    if (!token) {
+      state.currentUser = null;
+      if (authBtn) authBtn.style.display = "flex";
+      if (userPill) userPill.style.display = "none";
+      return;
+    }
+
+    try {
+      const user = await api.getMe();
+      state.currentUser = user;
+      if (authBtn) authBtn.style.display = "none";
+      if (userPill) {
+        userPill.style.display = "flex";
+        if (userNameEl) userNameEl.textContent = user.full_name || user.username;
+      }
+    } catch {
+      localStorage.removeItem("zamintahlil_token");
+      state.currentUser = null;
+      if (authBtn) authBtn.style.display = "flex";
+      if (userPill) userPill.style.display = "none";
+    }
+  }
+
   // Application Startup
   async function init() {
     window.i18n.applyTranslations();
@@ -1806,7 +2039,9 @@
     initEventListeners();
     initFieldWizard();
     initPurgeSystem();
+    initAuth();
     updateLayerChipsState(false);
+    await updateAuthUI();
     await loadFields();
   }
 

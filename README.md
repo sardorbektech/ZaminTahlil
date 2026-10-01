@@ -164,7 +164,7 @@ Loyihada paxta va kuzgi bug‘doy uchun oldindan o‘qitilgan Machine Learning m
 
 ## 🧪 Avtomatlashtirilgan Testlarni Ishga Tushirish
 
-Barcha unit va integratsion testlarni (jami 69 ta test) tekshirish:
+Barcha unit va integratsion testlarni (jami 79 ta test) tekshirish:
 
 ```bash
 python -m pytest
@@ -177,6 +177,19 @@ python -m pytest -q
 
 ---
 
+## 🔐 Foydalanuvchi Autentifikatsiyasi va Ma'lumotlar Izolyatsiyasi
+
+Platformada to'liq ko'p foydalanuvchili (multi-tenant) xavfsizlik tizimi joriy qilingan:
+- **Web Platformada Ro'yxatdan o'tish va Kirish**: Foydalanuvchilar o'z `username` va `password`lari orqali ro'yxatdan o'tadi va tizimga kiradi. JWT (JSON Web Token) orqali seans saqlanadi.
+- **Dala Izolyatsiyasi**: Har bir foydalanuvchi faqat o'zi yaratgan dalalar, tahlillar va AI tavsiyalariga ega bo'ladi.
+- **Telegram Bot Gatekeeper**:
+  - Telegram botda to'g'ridan-to'g'ri ro'yxatdan o'tish **yo'q** (xavfsizlik va ma'lumotlar yaxlitligi uchun foydalanuvchi avval veb-platformada ro'yxatdan o'tishi kerak).
+  - Botdan foydalanish uchun foydalanuvchi `/login <username> <parol>` buyrug'i orqali o'z akkauntiga ulanadi.
+  - Tizimdan chiqish uchun `/logout` buyrug'i mavjud.
+  - Tizimga kirmagan foydalanuvchilar dalalar yoki tahlillarga kira olmaydi.
+
+---
+
 ## 🤖 Telegram Bot Orqali Boshqarish (Agentic Management)
 
 Platformani Telegram orqali boshqarish uchun `.env` faylida `@BotFather` dan olingan bot tokenini ko'rsating:
@@ -185,8 +198,10 @@ TELEGRAM_BOT_TOKEN=1234567890:ABCdefGHIjklMNOpqrsTUVwxyz
 ```
 
 Dastur ishga tushganda (`uvicorn app.main:app`), Telegram bot ham fonda avtomatik ishga tushadi:
-- `🌾 /dalalar` — Barcha dalalar ro'yxati va faol dalani tanlash.
-- `🛰️ /tahlil` — Tanlangan dalaning Sentinel-2 kosmik fotosuratini va tahlil metrikalarini qabul qilish.
+- `🔑 /login <username> <parol>` — Web akkauntingiz orqali botga kirish.
+- `🚪 /logout` — Botdagi sessiyani yakunlash.
+- `🌾 /dalalar` — O'zingizga tegishli dalalar ro'yxati va faol dalani tanlash.
+- `🛰️ /tahlil` — Tanlangan dalaning Sentinel-2 kosmik fotosuratini va tahlil metrikalarini qabul qilish (bulutsiz eng so'nggi sifatli tasvir tanlanadi).
 - `📊 /indekslar` — Spektral xaritalar (NDVI, NDMI, NDRE, EVI, BSI).
 - `🔍 /muammolar` — Dalaning fazoviy muammoli zonalari (suvsizlik va kasallik qayerda ekanligini oddiy tilda ko'rsatish).
 - `🌱 /hosil` — CatBoost ML algoritmi orqali hosildorlik bashorati.
@@ -231,6 +246,7 @@ ZaminTahlil/
 │   ├── mcp_server.py           # Model Context Protocol (MCP) Server
 │   ├── spatial_zones.py        # Deterministik fazoviy muammoli zonalar dvigateli
 │   ├── routers/                # Modulli marshrutizatorlar
+│   │   ├── auth.py             # Foydalanuvchi ro'yxatdan o'tish va JWT login
 │   │   ├── fields.py           # Dala yaratish, ro'yxat va GeoJSON amallari
 │   │   ├── analysis.py         # Sentinel-2 tahlillari, artefaktlar va yillik dinamika
 │   │   ├── chat.py             # Agro-AI muloqoti, xulosalar va xabarlar tarixi
@@ -240,7 +256,7 @@ ZaminTahlil/
 │   ├── analysis.py             # Sentinel-2 multispektral tahlil xizmati
 │   ├── config.py               # Pydantic Settings konfiguratsiyasi
 │   ├── constants.py            # Indekslar, qatlamlar va tizim konstantalari
-│   ├── db.py                   # SQLite jadvallar sxemasi (Schema v7, WAL, keshlar)
+│   ├── db.py                   # SQLite jadvallar sxemasi (Schema v8, foydalanuvchilar, WAL)
 │   ├── geometry.py             # GeoJSON polygon validatsiyasi va maydon hisobi
 │   ├── indices.py              # NDVI, NDMI, NDRE, EVI, BSI formulalari
 │   ├── language.py             # O‘zbek, rus, ingliz tillarini avtomatik aniqlash
@@ -249,7 +265,7 @@ ZaminTahlil/
 │   ├── rendering.py            # PNG tasvirlarni rangli render qilish
 │   ├── repository.py           # Ma'lumotlar bazasi CRUD amallari
 │   ├── schemas.py              # Pydantic v2 so'rov va javob modellari
-│   ├── security.py             # Xavfsizlik sarlavhalari, rate limiter va log maskalash
+│   ├── security.py             # Parol heshlash (PBKDF2), JWT va xavfsizlik
 │   ├── sentinel.py             # Copernicus CDSE / Sentinel Hub mijozi (Daily dedup)
 │   ├── timeutils.py            # UTC vaqt konvertatsiyalari
 │   ├── weather.py              # Open-Meteo & NASA POWER ob-havo integratsiyasi
@@ -258,7 +274,7 @@ ZaminTahlil/
 ├── data/                       # Ma'lumotlar va precomputed RAG
 ├── models/                     # O'qitilgan ML modellar (.joblib)
 ├── scripts/                    # Yordamchi CLI skriptlar
-├── tests/                      # Pytest avtomatlashtirilgan testlari (75+ test, 100% pass)
+├── tests/                      # Pytest avtomatlashtirilgan testlari (79 test, 100% pass)
 ├── AGENTS.md                   # Agentlar va ishlab chiquvchilar uchun qoidalar
 ├── pyproject.toml              # Loyiha metadata va pytest sozlamalari
 ├── requirements.txt            # Minimal toza bog'liqliklar ro'yxati

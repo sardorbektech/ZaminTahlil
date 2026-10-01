@@ -44,28 +44,36 @@ class Repository:
         crop_name: str,
         planted_on: date,
         growth_stage: str,
+        user_id: int | None = None,
     ) -> dict[str, Any]:
         now = iso_utc()
         public_id = generate_field_id()
+        planted_str = (
+            planted_on.isoformat()
+            if hasattr(planted_on, "isoformat")
+            else str(planted_on)
+        )
         try:
             with self.database.connect() as connection:
                 cursor = connection.execute(
                     """INSERT INTO fields(
-                        public_id, geometry_json, geometry_hash, area_hectares, crop_name,
+                        public_id, user_id, geometry_json, geometry_hash, area_hectares, crop_name,
                         planted_on, growth_stage, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         public_id,
+                        user_id,
                         json.dumps(geometry, separators=(",", ":")),
                         geometry_hash,
                         area_hectares,
                         crop_name,
-                        planted_on.isoformat(),
+                        planted_str,
                         growth_stage,
                         now,
                         now,
                     ),
                 )
+
                 field_id = int(cursor.lastrowid or 0)
         except sqlite3.IntegrityError as exc:
             if "geometry_hash" in str(exc):
@@ -73,9 +81,15 @@ class Repository:
             raise
         return self.get_field(field_id)
 
-    def list_fields(self) -> list[dict[str, Any]]:
+    def list_fields(self, user_id: int | None = None) -> list[dict[str, Any]]:
         with self.database.connect() as connection:
-            rows = connection.execute("SELECT * FROM fields ORDER BY created_at DESC").fetchall()
+            if user_id is not None:
+                rows = connection.execute(
+                    "SELECT * FROM fields WHERE user_id = ? ORDER BY created_at DESC",
+                    (user_id,),
+                ).fetchall()
+            else:
+                rows = connection.execute("SELECT * FROM fields ORDER BY created_at DESC").fetchall()
         return [decode_json_columns(row_to_dict(row), "geometry_json") for row in rows]
 
     def get_field(self, field_id: int | str) -> dict[str, Any]:
@@ -654,3 +668,67 @@ class Repository:
                     updated_at = excluded.updated_at""",
                 (chat_id, field_id, now, now),
             )
+
+    def create_user(
+        self,
+        *,
+        username: str,
+        password_hash: str,
+        full_name: str | None = None,
+    ) -> dict[str, Any]:
+        now = iso_utc()
+        clean_username = username.strip().lower()
+        with self.database.connect() as connection:
+            cursor = connection.execute(
+                """INSERT INTO users(username, password_hash, full_name, created_at)
+                VALUES (?, ?, ?, ?)""",
+                (clean_username, password_hash, full_name, now),
+            )
+            user_id = int(cursor.lastrowid or 0)
+            connection.execute(
+                "UPDATE fields SET user_id = ? WHERE user_id IS NULL",
+                (user_id,),
+            )
+        user = self.get_user_by_id(user_id)
+        if user is None:
+            raise NotFoundError("Foydalanuvchi yaratilmadi")
+        return user
+
+    def get_user_by_id(self, user_id: int) -> dict[str, Any] | None:
+        with self.database.connect() as connection:
+            row = connection.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+        return row_to_dict(row) if row else None
+
+    def get_user_by_username(self, username: str) -> dict[str, Any] | None:
+        clean_username = username.strip().lower()
+        with self.database.connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM users WHERE username = ?", (clean_username,)
+            ).fetchone()
+        return row_to_dict(row) if row else None
+
+    def get_user_by_telegram_id(self, telegram_id: int) -> dict[str, Any] | None:
+        with self.database.connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM users WHERE telegram_id = ?", (telegram_id,)
+            ).fetchone()
+        return row_to_dict(row) if row else None
+
+    def link_telegram_user(self, user_id: int, telegram_id: int) -> None:
+        with self.database.connect() as connection:
+            connection.execute("UPDATE users SET telegram_id = NULL WHERE telegram_id = ?", (telegram_id,))
+            connection.execute("UPDATE users SET telegram_id = ? WHERE id = ?", (telegram_id, user_id))
+
+    def unlink_telegram_user(self, telegram_id: int) -> None:
+        with self.database.connect() as connection:
+            connection.execute("UPDATE users SET telegram_id = NULL WHERE telegram_id = ?", (telegram_id,))
+
+    def authenticate_user(self, username: str, password: str) -> dict[str, Any] | None:
+        from app.security import verify_password
+
+        user = self.get_user_by_username(username)
+        if not user:
+            return None
+        if verify_password(password, str(user["password_hash"])):
+            return user
+        return None

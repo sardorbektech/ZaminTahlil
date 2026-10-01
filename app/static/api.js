@@ -50,11 +50,18 @@
 
   const api = {
     async request(url, options = {}) {
+      const headers = {
+        "Accept": "application/json",
+        ...options.headers,
+      };
+
+      const token = localStorage.getItem("zamintahlil_token");
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+
       const config = {
-        headers: {
-          "Accept": "application/json",
-          ...options.headers,
-        },
+        headers,
         ...options,
       };
 
@@ -62,6 +69,7 @@
         config.headers["Content-Type"] = "application/json";
         config.body = JSON.stringify(config.body);
       }
+
 
       try {
         const response = await fetch(url, config);
@@ -113,6 +121,19 @@
     // Health
     getHealth(signal) {
       return this.get("/api/health", null, signal);
+    },
+
+    // Auth
+    register(userData, signal) {
+      return this.post("/api/auth/register", userData, signal);
+    },
+
+    login(credentials, signal) {
+      return this.post("/api/auth/login", credentials, signal);
+    },
+
+    getMe(signal) {
+      return this.get("/api/auth/me", null, signal);
     },
 
     // Fields

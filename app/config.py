@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     rag_model_name: str = "nomic-ai/nomic-embed-text-v1.5"
     telegram_bot_token: str | None = None
     telegram_webapp_url: str | None = None
+    jwt_secret_key: str = "zamintahlil-jwt-secret-key-production-2026"
+    jwt_algorithm: str = "HS256"
 
 
     @field_validator("sentinel_proxy", mode="before")
