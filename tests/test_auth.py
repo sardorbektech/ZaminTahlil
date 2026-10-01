@@ -64,7 +64,18 @@ async def test_auth_registration_login_and_field_isolation(
         assert login_resp.status_code == 200
         assert "token" in login_resp.json()
 
-        # 4. Wrong password login
+        # 4a. Non-existent user login -> specific "akkaunt topilmadi" error
+        not_found_login = await client.post(
+            "/api/auth/login",
+            json={
+                "username": "mavjud_emas_user",
+                "password": "somepassword123",
+            },
+        )
+        assert not_found_login.status_code == 401
+        assert "akkaunt topilmadi" in not_found_login.json()["detail"]
+
+        # 4b. Wrong password login -> specific "parol noto'g'ri" error
         bad_login = await client.post(
             "/api/auth/login",
             json={
@@ -73,6 +84,7 @@ async def test_auth_registration_login_and_field_isolation(
             },
         )
         assert bad_login.status_code == 401
+        assert "parol noto'g'ri" in bad_login.json()["detail"].lower()
 
         # 5. Get current profile /api/auth/me
         me_resp = await client.get(

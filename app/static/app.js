@@ -1877,6 +1877,14 @@
 
     tabLogin?.addEventListener("click", () => switchTab("login"));
     tabRegister?.addEventListener("click", () => switchTab("register"));
+    document.getElementById("link-to-register")?.addEventListener("click", (e) => {
+      e.preventDefault();
+      switchTab("register");
+    });
+    document.getElementById("link-to-login")?.addEventListener("click", (e) => {
+      e.preventDefault();
+      switchTab("login");
+    });
 
     // Password visibility toggle helpers
     function setupPasswordToggle(btnId, inputId) {
@@ -1902,7 +1910,13 @@
 
       const username = usernameInput?.value.trim();
       const password = passwordInput?.value;
-      if (!username || !password) return;
+      if (!username || !password) {
+        if (loginError) {
+          loginError.textContent = "Foydalanuvchi nomi va parolni kiriting.";
+          loginError.style.display = "block";
+        }
+        return;
+      }
 
       if (btnSubmit) {
         btnSubmit.disabled = true;
@@ -1920,7 +1934,24 @@
         await showAppView();
       } catch (err) {
         if (loginError) {
-          loginError.textContent = err.message || "Kirishda xatolik yuz berdi";
+          const msg = err.message || "Kirishda xatolik yuz berdi";
+          loginError.innerHTML = `<div>${msg}</div>`;
+          // Agar akkaunt yo'q bo'lsa, ro'yxatdan o'tishga yo'naltiruvchi havola qo'shish
+          if (msg.includes("topilmadi") || msg.includes("mavjud emas") || msg.includes("ro'yxatdan o'ting")) {
+            const switchBtn = document.createElement("button");
+            switchBtn.type = "button";
+            switchBtn.className = "auth-gk-switch-btn";
+            switchBtn.textContent = "👉 Ro'yxatdan o'tish oynasiga o'tish";
+            switchBtn.style.cssText = "display: inline-block; margin-top: 8px; background: none; border: none; color: #166534; font-weight: 700; text-decoration: underline; cursor: pointer; padding: 0;";
+            switchBtn.addEventListener("click", () => {
+              switchTab("register");
+              const regUsernameInput = document.getElementById("gk-reg-username");
+              if (regUsernameInput && username) {
+                regUsernameInput.value = username;
+              }
+            });
+            loginError.appendChild(switchBtn);
+          }
           loginError.style.display = "block";
         }
       } finally {
@@ -1942,7 +1973,31 @@
       const full_name = fullNameInput?.value.trim() || null;
       const username = usernameInput?.value.trim();
       const password = passwordInput?.value;
-      if (!username || !password) return;
+
+      if (!username || username.length < 3) {
+        if (regError) {
+          regError.textContent = "Foydalanuvchi nomi kamida 3 ta belgidan iborat bo'lishi kerak.";
+          regError.style.display = "block";
+        }
+        return;
+      }
+
+      const usernameRegex = /^[a-zA-Z0-9_.-]+$/;
+      if (!usernameRegex.test(username)) {
+        if (regError) {
+          regError.textContent = "Foydalanuvchi nomi faqat lotin harflari, raqamlar va (_ . -) belgilaridan iborat bo'lishi kerak.";
+          regError.style.display = "block";
+        }
+        return;
+      }
+
+      if (!password || password.length < 6) {
+        if (regError) {
+          regError.textContent = "Parol kamida 6 ta belgidan iborat bo'lishi kerak.";
+          regError.style.display = "block";
+        }
+        return;
+      }
 
       if (btnSubmit) {
         btnSubmit.disabled = true;

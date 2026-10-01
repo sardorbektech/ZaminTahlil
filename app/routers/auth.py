@@ -49,11 +49,19 @@ async def login_user(
     repository: RepositoryDependency,
 ) -> dict[str, Any]:
     """Foydalanuvchi nomi va parol orqali tizimga kirish (SQLite sessiya)."""
+    user_record = repository.get_user_by_username(payload.username)
+    if not user_record:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"'{payload.username}' nomli akkaunt topilmadi. Iltimos, avval ro'yxatdan o'ting.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     user = repository.authenticate_user(payload.username, payload.password)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Foydalanuvchi nomi yoki parol noto'g'ri.",
+            detail="Kiritilgan parol noto'g'ri. Iltimos, qaytadan tekshirib kiring.",
             headers={"WWW-Authenticate": "Bearer"},
         )
 

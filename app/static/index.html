@@ -284,7 +284,7 @@
             <span>Tizimga kirish</span> <span>➔</span>
           </button>
           <div class="auth-gk-footer-hint">
-            Hisobingiz yo'qmi? Yuqoridagi "Ro'yxatdan o'tish" tugmasini bosing.
+            Hisobingiz yo'qmi? <a href="#" id="link-to-register" style="color: #166534; font-weight: 700; text-decoration: underline;">Ro'yxatdan o'tish</a>
           </div>
         </form>
 
@@ -312,7 +312,7 @@
                 class="auth-gk-input"
                 id="gk-reg-username"
                 required
-                placeholder="kamida 3 ta belgi"
+                placeholder="masalan: ali_fermer (kamida 3 belgi)"
                 autocomplete="username"
               />
             </div>
@@ -334,10 +334,10 @@
           </div>
           <div id="gk-reg-error" class="auth-gk-alert"></div>
           <button type="submit" class="auth-gk-btn-submit" id="btn-gk-register">
-            <span>Hisob yaratish</span> <span>➔</span>
+            <span>Ro'yxatdan o'tish</span> <span>➔</span>
           </button>
           <div class="auth-gk-footer-hint">
-            Ro'yxatdan o'tgach, barcha Sentinel-2 tahlillaringiz xavfsiz saqlanadi.
+            Allaqachon hisobingiz bormi? <a href="#" id="link-to-login" style="color: #166534; font-weight: 700; text-decoration: underline;">Kirish</a>
           </div>
         </form>
       </div>
@@ -1174,105 +1174,6 @@
         </div>
       </div>
 
-      <!-- 6. AUTHENTICATION MODAL (LOGIN / REGISTER) -->
-      <div class="modal-overlay" id="modal-auth">
-        <div class="modal-card auth-modal-card" style="max-width: 440px;">
-          <div class="modal-header">
-            <h2 class="modal-title" id="auth-modal-title">Tizimga kirish</h2>
-            <button class="modal-close" id="btn-close-auth-modal" type="button">&times;</button>
-          </div>
-          <div class="auth-tabs" style="display: flex; border-bottom: 1px solid var(--color-border); margin: -8px 0 16px 0;">
-            <button class="auth-tab active" id="tab-auth-login" type="button" style="flex: 1; padding: 10px; background: none; border: none; border-bottom: 2px solid var(--color-primary); font-weight: 600; color: var(--color-primary); cursor: pointer;">Kirish</button>
-            <button class="auth-tab" id="tab-auth-register" type="button" style="flex: 1; padding: 10px; background: none; border: none; border-bottom: 2px solid transparent; font-weight: 500; color: var(--color-text-muted); cursor: pointer;">Ro'yxatdan o'tish</button>
-          </div>
-          <div class="modal-body" style="padding-top: 0;">
-            <!-- Login Form -->
-            <form id="form-auth-login" class="auth-form">
-              <div class="form-group" style="margin-bottom: 14px;">
-                <label class="form-label" for="login-username" style="display: block; margin-bottom: 6px; font-weight: 500; font-size: 0.85rem;">Foydalanuvchi nomi</label>
-                <input
-                  type="text"
-                  class="form-control"
-                  id="login-username"
-                  name="username"
-                  required
-                  placeholder="masalan: dehqon_ali"
-                  autocomplete="username"
-                  style="width: 100%;"
-                />
-              </div>
-              <div class="form-group" style="margin-bottom: 14px;">
-                <label class="form-label" for="login-password" style="display: block; margin-bottom: 6px; font-weight: 500; font-size: 0.85rem;">Parol</label>
-                <input
-                  type="password"
-                  class="form-control"
-                  id="login-password"
-                  name="password"
-                  required
-                  placeholder="Parolingiz"
-                  autocomplete="current-password"
-                  style="width: 100%;"
-                />
-              </div>
-              <div id="login-error-msg" style="display: none; color: var(--color-danger); font-size: 0.84rem; margin-bottom: 12px; background: var(--color-danger-bg); padding: 8px 12px; border-radius: var(--radius-sm);"></div>
-              <div class="modal-footer" style="padding: 12px 0 0 0; border-top: none;">
-                <button type="submit" class="btn btn-primary" id="btn-submit-login" style="width: 100%;">
-                  Kirish
-                </button>
-              </div>
-            </form>
-
-            <!-- Register Form -->
-            <form id="form-auth-register" class="auth-form" style="display: none;">
-              <div class="form-group" style="margin-bottom: 14px;">
-                <label class="form-label" for="reg-fullname" style="display: block; margin-bottom: 6px; font-weight: 500; font-size: 0.85rem;">To'liq ism (ixtiyoriy)</label>
-                <input
-                  type="text"
-                  class="form-control"
-                  id="reg-fullname"
-                  name="full_name"
-                  placeholder="Ali Valiyev"
-                  autocomplete="name"
-                  style="width: 100%;"
-                />
-              </div>
-              <div class="form-group" style="margin-bottom: 14px;">
-                <label class="form-label" for="reg-username" style="display: block; margin-bottom: 6px; font-weight: 500; font-size: 0.85rem;">Foydalanuvchi nomi</label>
-                <input
-                  type="text"
-                  class="form-control"
-                  id="reg-username"
-                  name="username"
-                  required
-                  placeholder="kamida 3 ta belgi"
-                  autocomplete="username"
-                  style="width: 100%;"
-                />
-              </div>
-              <div class="form-group" style="margin-bottom: 14px;">
-                <label class="form-label" for="reg-password" style="display: block; margin-bottom: 6px; font-weight: 500; font-size: 0.85rem;">Parol</label>
-                <input
-                  type="password"
-                  class="form-control"
-                  id="reg-password"
-                  name="password"
-                  required
-                  placeholder="kamida 6 ta belgi"
-                  autocomplete="new-password"
-                  style="width: 100%;"
-                />
-              </div>
-              <div id="reg-error-msg" style="display: none; color: var(--color-danger); font-size: 0.84rem; margin-bottom: 12px; background: var(--color-danger-bg); padding: 8px 12px; border-radius: var(--radius-sm);"></div>
-              <div class="modal-footer" style="padding: 12px 0 0 0; border-top: none;">
-                <button type="submit" class="btn btn-primary" id="btn-submit-reg" style="width: 100%;">
-                  Ro'yxatdan o'tish
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      </div>
-
       <!-- 7. GLOBAL TOAST STACK -->
       <div class="toast-container" id="global-toast-container"></div>
     </div>
@@ -1285,8 +1186,8 @@
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
 
     <!-- Application Scripts -->
-    <script src="/api.js?v=20260908_v4"></script>
-    <script src="/i18n.js?v=20260908_v4"></script>
-    <script src="/app.js?v=20260908_v4"></script>
+    <script src="/api.js?v=20261001_v6"></script>
+    <script src="/i18n.js?v=20261001_v6"></script>
+    <script src="/app.js?v=20261001_v6"></script>
   </body>
 </html>
